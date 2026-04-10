@@ -1,0 +1,34 @@
+{
+  "name": "react-devtools-custom",
+  "version": "0.0.0",
+  "description": "Custom React DevTools helpers for commit change detection.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "cross-env NODE_ENV=production webpack --config webpack.config.js",
+    "start": "cross-env NODE_ENV=development webpack --config webpack.config.js --watch"
+  },
+  "dependencies": {
+    "react-devtools-core": "7.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/facebook/react.git",
+    "directory": "packages/react-devtools-custom"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "index.d.ts",
+    "dist/"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  }
+}
