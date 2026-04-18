@@ -11,13 +11,8 @@ import type {
   Fiber as ReactFiber,
   FiberRoot as ReactFiberRoot,
 } from 'react-reconciler/src/ReactInternalTypes';
-import type {
-  HookSource,
-  HooksNode,
-  HooksTree,
-} from 'react-debug-tools/src/ReactDebugHooks';
+import type {HookSource} from 'react-debug-tools/src/ReactDebugHooks';
 
-import {inspectHooksOfFiber} from 'react-debug-tools';
 import {
   ClassComponent,
   ContextConsumer,
@@ -29,11 +24,11 @@ import {
 } from 'react-reconciler/src/ReactWorkTags';
 import {
   didFiberRender,
-  didStatefulHookChange,
   getChangedKeys,
   getContextChanged,
 } from 'react-devtools-shared/src/backend/fiber/shared/DevToolsFiberChangeDetection';
 import getComponentNameFromType from 'shared/getComponentNameFromType';
+import hasOwnProperty from 'shared/hasOwnProperty';
 
 const IndeterminateComponent = 2;
 
@@ -79,75 +74,66 @@ function getDisplayNameForFiber(fiber: Fiber): string | null {
   return getComponentNameFromType(fiber.type);
 }
 
-function getHooksTree(
-  fiber: Fiber,
-  currentDispatcherRef?: mixed,
-): HooksTree | null {
-  try {
-    return inspectHooksOfFiber(fiber, currentDispatcherRef);
-  } catch {
-    return null;
+function isHookThatCanScheduleUpdate(hookObject: any): boolean {
+  const queue = hookObject.queue;
+  if (!queue) {
+    return false;
   }
+
+  const boundHasOwnProperty = hasOwnProperty.bind(queue);
+
+  // Detect the shape of useState() / useReducer() / useTransition()
+  // using the attributes that are unique to these hooks
+  // but also stable (e.g. not tied to current Lanes implementation)
+  // We don't check for dispatch property, because useTransition doesn't have it
+  return boundHasOwnProperty('pending');
 }
 
-function getChangedHooks(
-  prevHooks: HooksTree | null,
-  nextHooks: HooksTree | null,
+function didStatefulHookChange(prev: any, next: any): boolean {
+  const prevMemoizedState = prev.memoizedState;
+  const nextMemoizedState = next.memoizedState;
+
+  if (isHookThatCanScheduleUpdate(prev)) {
+    return prevMemoizedState !== nextMemoizedState;
+  }
+
+  return false;
+}
+
+function getChangedHooksIndices(
+  prev: any,
+  next: any,
 ): Array<ChangedHook> | null {
-  if (prevHooks == null || nextHooks == null) {
+  if (prev == null || next == null) {
     return null;
   }
 
-  const changedHooks: Array<ChangedHook> = [];
+  const indices: Array<ChangedHook> = [];
+  let index = 0;
 
-  function traverse(
-    prevTree: HooksTree,
-    nextTree: HooksTree,
-    customHookPath: Array<string>,
-  ): void {
-    const customHookCounts = new Map<string, number>();
-    const length = Math.min(prevTree.length, nextTree.length);
-
-    for (let index = 0; index < length; index++) {
-      const prevHook: HooksNode = prevTree[index];
-      const nextHook: HooksNode = nextTree[index];
-
-      let nextCustomHookPath = customHookPath;
-      if (nextHook.id === null && nextHook.subHooks.length > 0) {
-        const customHookCount = customHookCounts.get(nextHook.name) ?? 0;
-        customHookCounts.set(nextHook.name, customHookCount + 1);
-        nextCustomHookPath = [
-          ...customHookPath,
-          `${nextHook.name}(${customHookCount})`,
-        ];
-      }
-
-      if (prevHook.subHooks.length > 0 && nextHook.subHooks.length > 0) {
-        traverse(prevHook.subHooks, nextHook.subHooks, nextCustomHookPath);
-        continue;
-      }
-
-      if (didStatefulHookChange(prevHook, nextHook) && nextHook.id !== null) {
-        changedHooks.push({
-          hookIndex: nextHook.id,
-          hookName: nextHook.name,
-          hookPath: [...customHookPath, nextHook.name],
-          hookSource: nextHook.hookSource,
-          prev: prevHook.value,
-          next: nextHook.value,
-        });
-      }
+  while (next !== null) {
+    if (didStatefulHookChange(prev, next)) {
+      indices.push({
+        hookIndex: index,
+        hookName: null,
+        hookPath: null,
+        hookSource: null,
+        prev: prev.memoizedState,
+        next: next.memoizedState,
+      });
     }
+
+    next = next.next;
+    prev = prev.next;
+    index++;
   }
 
-  traverse(prevHooks, nextHooks, []);
-  return changedHooks;
+  return indices;
 }
 
 function getChangeDescription(
   prevFiber: Fiber | null,
   nextFiber: Fiber,
-  currentDispatcherRef?: mixed,
 ): ChangeDescription | null {
   switch (nextFiber.tag) {
     case ClassComponent:
@@ -184,14 +170,15 @@ function getChangeDescription(
         };
       }
 
-      const prevHooks = getHooksTree(prevFiber, currentDispatcherRef);
-      const nextHooks = getHooksTree(nextFiber, currentDispatcherRef);
-      const hooks = getChangedHooks(prevHooks, nextHooks);
+      const indices = getChangedHooksIndices(
+        prevFiber.memoizedState,
+        nextFiber.memoizedState,
+      );
 
       return {
         context: getContextChanged(prevFiber, nextFiber),
-        didHooksChange: hooks !== null && hooks.length > 0,
-        hooks,
+        didHooksChange: indices !== null && indices.length > 0,
+        hooks: indices,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
         state: null,
@@ -204,7 +191,6 @@ function getChangeDescription(
 function collectFiberChanges(
   fiber: Fiber | null,
   changes: Array<CommittedFiberChange>,
-  currentDispatcherRef?: mixed,
 ): void {
   if (fiber === null) {
     return;
@@ -215,11 +201,7 @@ function collectFiberChanges(
     prevFiber === null ||
     didFiberRender(ReactTypeOfWork, prevFiber, fiber)
   ) {
-    const changeDescription = getChangeDescription(
-      prevFiber,
-      fiber,
-      currentDispatcherRef,
-    );
+    const changeDescription = getChangeDescription(prevFiber, fiber);
     if (changeDescription !== null) {
       changes.push({
         changeDescription,
@@ -230,12 +212,13 @@ function collectFiberChanges(
     }
   }
 
-  collectFiberChanges(fiber.child, changes, currentDispatcherRef);
-  collectFiberChanges(fiber.sibling, changes, currentDispatcherRef);
+  collectFiberChanges(fiber.child, changes);
+  collectFiberChanges(fiber.sibling, changes);
 }
 
 export function onCommitFiber(
   root: FiberRoot,
+  // eslint-disable-next-line no-unused-vars
   currentDispatcherRef?: mixed,
 ): Array<CommittedFiberChange> {
   if (root.current == null || root.current.child == null) {
@@ -243,6 +226,6 @@ export function onCommitFiber(
   }
 
   const changes: Array<CommittedFiberChange> = [];
-  collectFiberChanges(root.current, changes, currentDispatcherRef);
+  collectFiberChanges(root.current, changes);
   return changes;
 }
