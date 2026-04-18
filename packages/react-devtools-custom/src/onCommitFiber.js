@@ -197,10 +197,7 @@ function collectFiberChanges(
   }
 
   const prevFiber = fiber.alternate;
-  if (
-    prevFiber === null ||
-    didFiberRender(ReactTypeOfWork, prevFiber, fiber)
-  ) {
+  if (prevFiber === null || didFiberRender(ReactTypeOfWork, prevFiber, fiber)) {
     const changeDescription = getChangeDescription(prevFiber, fiber);
     if (changeDescription !== null) {
       changes.push({
@@ -216,16 +213,32 @@ function collectFiberChanges(
   collectFiberChanges(fiber.sibling, changes);
 }
 
-export function onCommitFiber(
-  root: FiberRoot,
-  // eslint-disable-next-line no-unused-vars
-  currentDispatcherRef?: mixed,
-): Array<CommittedFiberChange> {
+let isRecording: boolean = false;
+let changes: Array<CommittedFiberChange> = [];
+
+export function startRecording(): void {
+  isRecording = true;
+  changes = [];
+}
+
+export function endRecording(): Array<CommittedFiberChange> {
+  isRecording = false;
+  const recorded = changes;
+  changes = [];
+  return recorded;
+}
+
+export function onCommitFiber(root: FiberRoot): Array<CommittedFiberChange> {
+  if (!isRecording) {
+    return [];
+  }
   if (root.current == null || root.current.child == null) {
     return [];
   }
 
-  const changes: Array<CommittedFiberChange> = [];
-  collectFiberChanges(root.current, changes);
-  return changes;
+  const commitChanges: Array<CommittedFiberChange> = [];
+  collectFiberChanges(root.current, commitChanges);
+  changes.push(commitChanges);
+
+  return commitChanges;
 }
