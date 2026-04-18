@@ -144,19 +144,17 @@ export type RecordedHookChange = {
 export type ChangeDescription = {
   context: Array<string> | boolean | null;
   didHooksChange: boolean;
-  fiberType: number;
-  hooks?: Array<RecordedHookChange> | null;
+  hooks?: Array<RecordedHookChange | ChangedHook> | null;
   isFirstMount: boolean;
   props: Array<string> | null;
   state: Array<string> | null;
 };
 
 export type CommittedFiberChange = {
-  changeDescription: ChangeDescription;
   displayName: string | null;
   fiber: Fiber;
   prevFiber: Fiber | null;
-};
+} & ChangeDescription;
 
 export declare function onCommitFiber(
   root: FiberRoot,
@@ -165,7 +163,7 @@ export declare function onCommitFiber(
 
 export declare function startRecording(): void;
 
-export declare function endRecording(): Array<CommittedFiberChange>;
+export declare function endRecording(): Array<Array<CommittedFiberChange>>;
 
 export declare function installHook(
   target: any,

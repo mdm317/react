@@ -8,7 +8,11 @@
  */
 
 import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
-import type {HookSource} from 'react-debug-tools/src/ReactDebugHooks';
+import type {
+  HookSource,
+  HooksNode,
+  HooksTree,
+} from 'react-debug-tools/src/ReactDebugHooks';
 
 export type {Fiber, FiberRoot};
 
@@ -26,8 +30,8 @@ import {
   getChangedKeys,
   getContextChanged,
 } from 'react-devtools-shared/src/backend/fiber/shared/DevToolsFiberChangeDetection';
+import {inspectHooksOfFiber} from 'react-debug-tools';
 import getComponentNameFromType from 'shared/getComponentNameFromType';
-import hasOwnProperty from 'shared/hasOwnProperty';
 
 const IndeterminateComponent = 2;
 
@@ -50,18 +54,17 @@ export type RecordedHookChange = {
 export type ChangeDescription = {
   context: Array<string> | boolean | null,
   didHooksChange: boolean,
-  fiberType?: Fiber.type,
-  hooks?: Array<RecordedHookChange> | null,
+  hooks?: Array<RecordedHookChange | ChangedHook> | null,
   isFirstMount: boolean,
   props: Array<string> | null,
   state: Array<string> | null,
 };
 
 export type CommittedFiberChange = {
-  changeDescription: ChangeDescription,
   displayName: string | null,
   fiber: Fiber,
   prevFiber: Fiber | null,
+  ...ChangeDescription,
 };
 
 const ReactTypeOfWork = {
@@ -142,7 +145,6 @@ function getChangeDescription(
         return {
           context: null,
           didHooksChange: false,
-          fiberType: nextFiber.tag,
           isFirstMount: true,
           props: null,
           state: null,
@@ -152,7 +154,6 @@ function getChangeDescription(
       return {
         context: getContextChanged(prevFiber, nextFiber),
         didHooksChange: false,
-        fiberType: nextFiber.tag,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
         state: getChangedKeys(prevFiber.memoizedState, nextFiber.memoizedState),
@@ -181,7 +182,6 @@ function getChangeDescription(
       return {
         context: getContextChanged(prevFiber, nextFiber),
         didHooksChange: indices !== null && indices.length > 0,
-        fiberType: indices ? nextFiber.type : null,
         hooks: indices,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
@@ -205,7 +205,7 @@ function collectFiberChanges(
     const changeDescription = getChangeDescription(prevFiber, fiber);
     if (changeDescription !== null) {
       changes.push({
-        changeDescription,
+        ...changeDescription,
         displayName: getDisplayNameForFiber(fiber),
         fiber,
         prevFiber,
@@ -218,16 +218,87 @@ function collectFiberChanges(
 }
 
 let isRecording: boolean = false;
-let changes: Array<CommittedFiberChange> = [];
+let changes: Array<Array<CommittedFiberChange>> = [];
+
+function flattenHooksTree(
+  tree: HooksTree,
+  path: Array<string>,
+  flat: Array<{hook: HooksNode, path: Array<string>}>,
+): void {
+  // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+  for (const hook of tree) {
+    if (hook.subHooks.length > 0) {
+      flattenHooksTree(hook.subHooks, [...path, hook.name], flat);
+      continue;
+    }
+    flat.push({hook, path});
+  }
+}
+
+function flushCommit(): Array<Array<CommittedFiberChange>> {
+  const flushed: Array<Array<CommittedFiberChange>> = [];
+  // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+  for (const commitChanges of changes) {
+    const nextCommitChanges: Array<CommittedFiberChange> = [];
+    // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+    for (const change of commitChanges) {
+      const recordedHooks = change.hooks;
+      if (recordedHooks == null || recordedHooks.length === 0) {
+        nextCommitChanges.push(change);
+        continue;
+      }
+
+      let hooksTree: HooksTree | null = null;
+      try {
+        hooksTree = inspectHooksOfFiber(change.fiber);
+      } catch (error) {
+        hooksTree = null;
+      }
+      if (hooksTree === null) {
+        nextCommitChanges.push(change);
+        continue;
+      }
+
+      const flatHooks: Array<{hook: HooksNode, path: Array<string>}> = [];
+      flattenHooksTree(hooksTree, [], flatHooks);
+
+      const changedHooks: Array<ChangedHook> = [];
+      // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+      for (const recorded of recordedHooks) {
+        const entry = flatHooks[recorded.hookIndex];
+        if (entry == null) {
+          changedHooks.push({
+            hookIndex: recorded.hookIndex,
+            prev: recorded.prev,
+            next: recorded.next,
+          });
+          continue;
+        }
+        changedHooks.push({
+          hookIndex: recorded.hookIndex,
+          hookName: entry.hook.name,
+          hookPath: [...entry.path, entry.hook.name],
+          hookSource: entry.hook.hookSource,
+          prev: recorded.prev,
+          next: recorded.next,
+        });
+      }
+
+      nextCommitChanges.push({...change, hooks: changedHooks});
+    }
+    flushed.push(nextCommitChanges);
+  }
+  return flushed;
+}
 
 export function startRecording(): void {
   isRecording = true;
   changes = [];
 }
 
-export function endRecording(): Array<CommittedFiberChange> {
+export function endRecording(): Array<Array<CommittedFiberChange>> {
   isRecording = false;
-  const recorded = changes;
+  const recorded = flushCommit();
   changes = [];
   return recorded;
 }
