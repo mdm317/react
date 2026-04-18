@@ -47,4 +47,5 @@ export type {
   CommittedFiberChange,
   Fiber,
   FiberRoot,
+  RecordedHookChange,
 } from './src/onCommitFiber';

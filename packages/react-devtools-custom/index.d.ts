@@ -134,10 +134,18 @@ export type ChangedHook = {
   next: unknown;
 };
 
+export type RecordedHookChange = {
+  hookIndex: number;
+  isParsed: boolean;
+  prev: unknown;
+  next: unknown;
+};
+
 export type ChangeDescription = {
   context: Array<string> | boolean | null;
   didHooksChange: boolean;
-  hooks?: Array<ChangedHook> | null;
+  fiberType: number;
+  hooks?: Array<RecordedHookChange> | null;
   isFirstMount: boolean;
   props: Array<string> | null;
   state: Array<string> | null;

@@ -7,11 +7,10 @@
  * @flow
  */
 
-import type {
-  Fiber as ReactFiber,
-  FiberRoot as ReactFiberRoot,
-} from 'react-reconciler/src/ReactInternalTypes';
+import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 import type {HookSource} from 'react-debug-tools/src/ReactDebugHooks';
+
+export type {Fiber, FiberRoot};
 
 import {
   ClassComponent,
@@ -32,10 +31,6 @@ import hasOwnProperty from 'shared/hasOwnProperty';
 
 const IndeterminateComponent = 2;
 
-export type Fiber = ReactFiber;
-
-export type FiberRoot = ReactFiberRoot;
-
 export type ChangedHook = {
   hookIndex: number,
   hookName?: string | null,
@@ -45,10 +40,18 @@ export type ChangedHook = {
   next: mixed,
 };
 
+export type RecordedHookChange = {
+  hookIndex: number,
+  isParsed: boolean,
+  prev: mixed,
+  next: mixed,
+};
+
 export type ChangeDescription = {
   context: Array<string> | boolean | null,
   didHooksChange: boolean,
-  hooks?: Array<ChangedHook> | null,
+  fiberType?: Fiber.type,
+  hooks?: Array<RecordedHookChange> | null,
   isFirstMount: boolean,
   props: Array<string> | null,
   state: Array<string> | null,
@@ -103,21 +106,19 @@ function didStatefulHookChange(prev: any, next: any): boolean {
 function getChangedHooksIndices(
   prev: any,
   next: any,
-): Array<ChangedHook> | null {
+): Array<RecordedHookChange> | null {
   if (prev == null || next == null) {
     return null;
   }
 
-  const indices: Array<ChangedHook> = [];
+  const indices: Array<RecordedHookChange> = [];
   let index = 0;
 
   while (next !== null) {
     if (didStatefulHookChange(prev, next)) {
       indices.push({
         hookIndex: index,
-        hookName: null,
-        hookPath: null,
-        hookSource: null,
+        isParsed: false,
         prev: prev.memoizedState,
         next: next.memoizedState,
       });
@@ -141,6 +142,7 @@ function getChangeDescription(
         return {
           context: null,
           didHooksChange: false,
+          fiberType: nextFiber.tag,
           isFirstMount: true,
           props: null,
           state: null,
@@ -150,6 +152,7 @@ function getChangeDescription(
       return {
         context: getContextChanged(prevFiber, nextFiber),
         didHooksChange: false,
+        fiberType: nextFiber.tag,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
         state: getChangedKeys(prevFiber.memoizedState, nextFiber.memoizedState),
@@ -178,6 +181,7 @@ function getChangeDescription(
       return {
         context: getContextChanged(prevFiber, nextFiber),
         didHooksChange: indices !== null && indices.length > 0,
+        fiberType: indices ? nextFiber.type : null,
         hooks: indices,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
