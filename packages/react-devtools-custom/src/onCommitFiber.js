@@ -274,13 +274,37 @@ function isStatefulHookNode(hook: HooksNode): boolean {
   );
 }
 
-function findHookNodeByFiberMemoizedStateIndex(
-  hooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex,
-  fiberMemoizedStateIndex: number,
-): HookLookupEntry | null {
-  return (
-    hooksByFiberMemoizedStateIndex.get(fiberMemoizedStateIndex) ?? null
-  );
+function getHooksByFiberMemoizedStateIndex(
+  cache: Map<Fiber, HooksByFiberMemoizedStateIndex | null>,
+  fiber: Fiber,
+): HooksByFiberMemoizedStateIndex | null {
+  const cached = cache.get(fiber);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  let hooksTree: HooksTree | null = null;
+  try {
+    hooksTree = inspectHooksOfFiber(fiber);
+  } catch (error) {
+    hooksTree = null;
+  }
+
+  let hooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex | null;
+  if (hooksTree === null) {
+    hooksByFiberMemoizedStateIndex = null;
+  } else {
+    hooksByFiberMemoizedStateIndex = new Map();
+    collectHooksByFiberMemoizedStateIndex(
+      hooksTree,
+      [],
+      hooksByFiberMemoizedStateIndex,
+      0,
+    );
+  }
+
+  cache.set(fiber, hooksByFiberMemoizedStateIndex);
+  return hooksByFiberMemoizedStateIndex;
 }
 
 function flushCommit(): Array<Array<CommittedFiberChange>> {
@@ -297,70 +321,54 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
       // `change.hooks` at flush time is always an array of DetectedHookChange
       // (populated by getChangedHooksIndices during commit). We resolve each
       // one into a ResolvedHookChange below.
-      const detectedHooks = change.hooks;
-      if (detectedHooks == null || detectedHooks.length === 0) {
+      const hookIndices = change.hooks;
+      if (hookIndices == null || hookIndices.length === 0) {
         nextCommitChanges.push(change);
         continue;
       }
 
-      let hooksByFiberMemoizedStateIndex =
-        hooksByFiberMemoizedStateIndexByFiber.get(change.fiber);
-      if (hooksByFiberMemoizedStateIndex === undefined) {
-        let hooksTree: HooksTree | null = null;
-        try {
-          hooksTree = inspectHooksOfFiber(change.fiber);
-        } catch (error) {
-          hooksTree = null;
-        }
-        if (hooksTree === null) {
-          hooksByFiberMemoizedStateIndex = null;
-        } else {
-          const nextHooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex =
-            new Map();
-          collectHooksByFiberMemoizedStateIndex(
-            hooksTree,
-            [],
-            nextHooksByFiberMemoizedStateIndex,
-            0,
-          );
-          hooksByFiberMemoizedStateIndex =
-            nextHooksByFiberMemoizedStateIndex;
-        }
-        hooksByFiberMemoizedStateIndexByFiber.set(
+      const hooksByFiberMemoizedStateIndex =
+        getHooksByFiberMemoizedStateIndex(
+          hooksByFiberMemoizedStateIndexByFiber,
           change.fiber,
-          hooksByFiberMemoizedStateIndex,
         );
-      }
 
       if (hooksByFiberMemoizedStateIndex === null) {
         nextCommitChanges.push(change);
+        console.error(
+          'react-devtools-custom: failed to build hook index for fiber %o',
+          change.fiber,
+        );
         continue;
       }
 
       const resolvedHooks: Array<ResolvedHookChange> = [];
       // eslint-disable-next-line no-for-of-loops/no-for-of-loops
-      for (const detected of detectedHooks) {
-        const resolved = findHookNodeByFiberMemoizedStateIndex(
-          hooksByFiberMemoizedStateIndex,
-          detected.hookIndex,
-        );
-        if (resolved === null) {
+      for (const hookIndex of hookIndices) {
+        const resolvedHook =
+          hooksByFiberMemoizedStateIndex.get(hookIndex.hookIndex);
+        if (resolvedHook === undefined) {
+          console.error(
+            'react-devtools-custom: no hook found at fiber memoizedState index %s for fiber %o',
+            hookIndex.hookIndex,
+            change.fiber,
+          );
           continue;
         }
-        if (!isStatefulHookNode(resolved.hook)) {
+        if (!isStatefulHookNode(resolvedHook.hook)) {
           continue;
         }
-        const resolvedHookIndex = resolved.hook.id;
+        const resolvedHookIndex = resolvedHook.hook.id;
         if (resolvedHookIndex === null) {
           continue;
         }
         resolvedHooks.push({
           hookIndex: resolvedHookIndex,
-          hookName: resolved.hook.name,
-          hookPath: [...resolved.path, resolved.hook.name],
-          hookSource: resolved.hook.hookSource,
-          prev: detected.prev,
-          next: detected.next,
+          hookName: resolvedHook.hook.name,
+          hookPath: [...resolvedHook.path, resolvedHook.hook.name],
+          hookSource: resolvedHook.hook.hookSource,
+          prev: hookIndex.prev,
+          next: hookIndex.next,
         });
       }
 
