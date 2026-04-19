@@ -35,7 +35,22 @@ import getComponentNameFromType from 'shared/getComponentNameFromType';
 
 const IndeterminateComponent = 2;
 
-export type ChangedHook = {
+// Low-level hook change detected by diffing the prev/next fiber's memoizedState
+// linked list. `hookIndex` is the raw position in that list; no hook-tree
+// metadata (name/path/source) has been resolved yet. Produced by
+// getChangedHooksIndices during commit.
+export type DetectedHookChange = {
+  hookIndex: number,
+  prev: mixed,
+  next: mixed,
+};
+
+// Hook change after matching a DetectedHookChange against the hook tree from
+// inspectHooksOfFiber. `hookIndex` is remapped to the resolved hook-tree index
+// (`hook.id`) for the matching slot-consuming hook, and
+// hookName/hookPath/hookSource carry the resolved metadata. Produced by
+// flushCommit at endRecording time.
+export type ResolvedHookChange = {
   hookIndex: number,
   hookName?: string | null,
   hookPath?: Array<string> | null,
@@ -44,17 +59,11 @@ export type ChangedHook = {
   next: mixed,
 };
 
-export type RecordedHookChange = {
-  hookIndex: number,
-  isParsed: boolean,
-  prev: mixed,
-  next: mixed,
-};
-
 export type ChangeDescription = {
   context: Array<string> | boolean | null,
   didHooksChange: boolean,
-  hooks?: Array<RecordedHookChange | ChangedHook> | null,
+  // DetectedHookChange while recording; ResolvedHookChange after flushCommit.
+  hooks?: Array<DetectedHookChange | ResolvedHookChange> | null,
   isFirstMount: boolean,
   props: Array<string> | null,
   state: Array<string> | null,
@@ -80,48 +89,25 @@ function getDisplayNameForFiber(fiber: Fiber): string | null {
   return getComponentNameFromType(fiber.type);
 }
 
-function isHookThatCanScheduleUpdate(hookObject: any): boolean {
-  const queue = hookObject.queue;
-  if (!queue) {
-    return false;
-  }
-
-  const boundHasOwnProperty = hasOwnProperty.bind(queue);
-
-  // Detect the shape of useState() / useReducer() / useTransition()
-  // using the attributes that are unique to these hooks
-  // but also stable (e.g. not tied to current Lanes implementation)
-  // We don't check for dispatch property, because useTransition doesn't have it
-  return boundHasOwnProperty('pending');
-}
-
 function didStatefulHookChange(prev: any, next: any): boolean {
-  const prevMemoizedState = prev.memoizedState;
-  const nextMemoizedState = next.memoizedState;
-
-  if (isHookThatCanScheduleUpdate(prev)) {
-    return prevMemoizedState !== nextMemoizedState;
-  }
-
-  return false;
+  return prev.memoizedState !== next.memoizedState;
 }
 
 function getChangedHooksIndices(
   prev: any,
   next: any,
-): Array<RecordedHookChange> | null {
+): Array<DetectedHookChange> | null {
   if (prev == null || next == null) {
     return null;
   }
 
-  const indices: Array<RecordedHookChange> = [];
+  const detected: Array<DetectedHookChange> = [];
   let index = 0;
 
   while (next !== null) {
     if (didStatefulHookChange(prev, next)) {
-      indices.push({
+      detected.push({
         hookIndex: index,
-        isParsed: false,
         prev: prev.memoizedState,
         next: next.memoizedState,
       });
@@ -132,7 +118,7 @@ function getChangedHooksIndices(
     index++;
   }
 
-  return indices;
+  return detected;
 }
 
 function getChangeDescription(
@@ -174,15 +160,15 @@ function getChangeDescription(
         };
       }
 
-      const indices = getChangedHooksIndices(
+      const detectedHooks = getChangedHooksIndices(
         prevFiber.memoizedState,
         nextFiber.memoizedState,
       );
 
       return {
         context: getContextChanged(prevFiber, nextFiber),
-        didHooksChange: indices !== null && indices.length > 0,
-        hooks: indices,
+        didHooksChange: detectedHooks !== null && detectedHooks.length > 0,
+        hooks: detectedHooks,
         isFirstMount: false,
         props: getChangedKeys(prevFiber.memoizedProps, nextFiber.memoizedProps),
         state: null,
@@ -220,71 +206,169 @@ function collectFiberChanges(
 let isRecording: boolean = false;
 let changes: Array<Array<CommittedFiberChange>> = [];
 
-function flattenHooksTree(
+type HookLookupEntry = {
+  hook: HooksNode,
+  path: Array<string>,
+};
+
+type HooksByFiberMemoizedStateIndex = Map<number, HookLookupEntry>;
+
+function getMemoizedStateConsumption(hook: HooksNode): number {
+  // Native hooks with id === null do not call nextHook() and so consume 0 slots.
+  // Some composite hooks call nextHook() multiple times internally.
+  if (hook.id === null) {
+    return 0;
+  }
+  switch (hook.name) {
+    case 'SyncExternalStore':
+    case 'Transition':
+      return 2;
+    case 'ActionState':
+    case 'FormState':
+      return 3;
+    default:
+      return 1;
+  }
+}
+
+function collectHooksByFiberMemoizedStateIndex(
   tree: HooksTree,
   path: Array<string>,
-  flat: Array<{hook: HooksNode, path: Array<string>}>,
-): void {
+  hooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex,
+  memCounter: number,
+): number {
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
   for (const hook of tree) {
     if (hook.subHooks.length > 0) {
-      flattenHooksTree(hook.subHooks, [...path, hook.name], flat);
+      memCounter = collectHooksByFiberMemoizedStateIndex(
+        hook.subHooks,
+        [...path, hook.name],
+        hooksByFiberMemoizedStateIndex,
+        memCounter,
+      );
       continue;
     }
-    flat.push({hook, path});
+
+    const consumption = getMemoizedStateConsumption(hook);
+    // Hooks like useContext do not allocate a node in fiber.memoizedState,
+    // so they consume 0 memoizedState slots and should not be indexed here.
+    if (consumption === 0) {
+      continue;
+    }
+
+    const fiberMemoizedStateIndex = memCounter;
+    hooksByFiberMemoizedStateIndex.set(fiberMemoizedStateIndex, {hook, path});
+    memCounter = fiberMemoizedStateIndex + consumption;
   }
+
+  return memCounter;
+}
+
+function isStatefulHookNode(hook: HooksNode): boolean {
+  return (
+    hook.isStateEditable === true ||
+    hook.name === 'SyncExternalStore' ||
+    hook.name === 'Transition' ||
+    hook.name === 'ActionState' ||
+    hook.name === 'FormState'
+  );
+}
+
+function findHookNodeByFiberMemoizedStateIndex(
+  hooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex,
+  fiberMemoizedStateIndex: number,
+): HookLookupEntry | null {
+  return (
+    hooksByFiberMemoizedStateIndex.get(fiberMemoizedStateIndex) ?? null
+  );
 }
 
 function flushCommit(): Array<Array<CommittedFiberChange>> {
   const flushed: Array<Array<CommittedFiberChange>> = [];
+  const hooksByFiberMemoizedStateIndexByFiber: Map<
+    Fiber,
+    HooksByFiberMemoizedStateIndex | null,
+  > = new Map();
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
   for (const commitChanges of changes) {
     const nextCommitChanges: Array<CommittedFiberChange> = [];
     // eslint-disable-next-line no-for-of-loops/no-for-of-loops
     for (const change of commitChanges) {
-      const recordedHooks = change.hooks;
-      if (recordedHooks == null || recordedHooks.length === 0) {
+      // `change.hooks` at flush time is always an array of DetectedHookChange
+      // (populated by getChangedHooksIndices during commit). We resolve each
+      // one into a ResolvedHookChange below.
+      const detectedHooks = change.hooks;
+      if (detectedHooks == null || detectedHooks.length === 0) {
         nextCommitChanges.push(change);
         continue;
       }
 
-      let hooksTree: HooksTree | null = null;
-      try {
-        hooksTree = inspectHooksOfFiber(change.fiber);
-      } catch (error) {
-        hooksTree = null;
+      let hooksByFiberMemoizedStateIndex =
+        hooksByFiberMemoizedStateIndexByFiber.get(change.fiber);
+      if (hooksByFiberMemoizedStateIndex === undefined) {
+        let hooksTree: HooksTree | null = null;
+        try {
+          hooksTree = inspectHooksOfFiber(change.fiber);
+        } catch (error) {
+          hooksTree = null;
+        }
+        if (hooksTree === null) {
+          hooksByFiberMemoizedStateIndex = null;
+        } else {
+          const nextHooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex =
+            new Map();
+          collectHooksByFiberMemoizedStateIndex(
+            hooksTree,
+            [],
+            nextHooksByFiberMemoizedStateIndex,
+            0,
+          );
+          hooksByFiberMemoizedStateIndex =
+            nextHooksByFiberMemoizedStateIndex;
+        }
+        hooksByFiberMemoizedStateIndexByFiber.set(
+          change.fiber,
+          hooksByFiberMemoizedStateIndex,
+        );
       }
-      if (hooksTree === null) {
+
+      if (hooksByFiberMemoizedStateIndex === null) {
         nextCommitChanges.push(change);
         continue;
       }
 
-      const flatHooks: Array<{hook: HooksNode, path: Array<string>}> = [];
-      flattenHooksTree(hooksTree, [], flatHooks);
-
-      const changedHooks: Array<ChangedHook> = [];
+      const resolvedHooks: Array<ResolvedHookChange> = [];
       // eslint-disable-next-line no-for-of-loops/no-for-of-loops
-      for (const recorded of recordedHooks) {
-        const entry = flatHooks[recorded.hookIndex];
-        if (entry == null) {
-          changedHooks.push({
-            hookIndex: recorded.hookIndex,
-            prev: recorded.prev,
-            next: recorded.next,
-          });
+      for (const detected of detectedHooks) {
+        const resolved = findHookNodeByFiberMemoizedStateIndex(
+          hooksByFiberMemoizedStateIndex,
+          detected.hookIndex,
+        );
+        if (resolved === null) {
           continue;
         }
-        changedHooks.push({
-          hookIndex: recorded.hookIndex,
-          hookName: entry.hook.name,
-          hookPath: [...entry.path, entry.hook.name],
-          hookSource: entry.hook.hookSource,
-          prev: recorded.prev,
-          next: recorded.next,
+        if (!isStatefulHookNode(resolved.hook)) {
+          continue;
+        }
+        const resolvedHookIndex = resolved.hook.id;
+        if (resolvedHookIndex === null) {
+          continue;
+        }
+        resolvedHooks.push({
+          hookIndex: resolvedHookIndex,
+          hookName: resolved.hook.name,
+          hookPath: [...resolved.path, resolved.hook.name],
+          hookSource: resolved.hook.hookSource,
+          prev: detected.prev,
+          next: detected.next,
         });
       }
 
-      nextCommitChanges.push({...change, hooks: changedHooks});
+      nextCommitChanges.push({
+        ...change,
+        didHooksChange: resolvedHooks.length > 0,
+        hooks: resolvedHooks,
+      });
     }
     flushed.push(nextCommitChanges);
   }

@@ -35,17 +35,13 @@ export function installHook(
   return target.__REACT_DEVTOOLS_GLOBAL_HOOK__ ?? null;
 }
 
-export {
-  endRecording,
-  onCommitFiber,
-  startRecording,
-} from './src/onCommitFiber';
+export {endRecording, onCommitFiber, startRecording} from './src/onCommitFiber';
 
 export type {
-  ChangedHook,
   ChangeDescription,
   CommittedFiberChange,
+  DetectedHookChange,
   Fiber,
   FiberRoot,
-  RecordedHookChange,
+  ResolvedHookChange,
 } from './src/onCommitFiber';
