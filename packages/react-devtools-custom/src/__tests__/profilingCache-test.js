@@ -786,6 +786,230 @@ describe('ProfilingCache', () => {
   });
 
   // @reactVersion >= 16.9
+  it('should use only direct custom hook values when formatting hook paths', () => {
+    function useConditionalStateHook(isRandom) {
+      const x = isRandom ? 1 : 0;
+      const [value, setValue] = React.useState(x);
+      return [value, setValue];
+    }
+
+    function useCustomHook(label) {
+      React.useDebugValue(label);
+      const [value, setValue] = React.useState(label);
+      return [value, setValue];
+    }
+
+    let setTopLevelState = null;
+    let setConditionalState = null;
+    let setNumberLabelState = null;
+    let setStringLabelState = null;
+    let setUndefinedLabelState = null;
+    let setMissingLabelState = null;
+
+    const Component = () => {
+      const [, _setTopLevelState] = React.useState(4);
+      setTopLevelState = _setTopLevelState;
+
+      const [, _setConditionalState] = useConditionalStateHook(true);
+      setConditionalState = _setConditionalState;
+
+      const [, _setNumberLabelState] = useCustomHook(10);
+      setNumberLabelState = _setNumberLabelState;
+
+      const [, _setStringLabelState] = useCustomHook('10');
+      setStringLabelState = _setStringLabelState;
+
+      const [, _setUndefinedLabelState] = useCustomHook(undefined);
+      setUndefinedLabelState = _setUndefinedLabelState;
+
+      const [, _setMissingLabelState] = useCustomHook();
+      setMissingLabelState = _setMissingLabelState;
+
+      return null;
+    };
+
+    utils.act(() => render(<Component />));
+
+    const realSetTopLevelState = setTopLevelState;
+    const realSetConditionalState = setConditionalState;
+    const realSetNumberLabelState = setNumberLabelState;
+    const realSetStringLabelState = setStringLabelState;
+    const realSetUndefinedLabelState = setUndefinedLabelState;
+    const realSetMissingLabelState = setMissingLabelState;
+
+    utils.act(() => startRecording());
+
+    utils.act(() => realSetTopLevelState(5));
+    utils.act(() => realSetConditionalState(2));
+    utils.act(() => realSetNumberLabelState(11));
+    utils.act(() => realSetStringLabelState('11'));
+    utils.act(() => realSetUndefinedLabelState('defined'));
+    utils.act(() => realSetMissingLabelState('later'));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    const changeDescriptions = recorded.map(commit => {
+      const descriptions = toChangeDescriptionsByDisplayName(
+        commit.filter(c => c.displayName === 'Component'),
+      );
+      return new Map(
+        Array.from(descriptions.entries()).map(([displayName, entry]) => [
+          displayName,
+          {
+            ...entry,
+            hooks:
+              entry.hooks == null
+                ? entry.hooks
+                : entry.hooks.map(({hookSource, ...hook}) => hook),
+          },
+        ]),
+      );
+    });
+
+    expect(changeDescriptions).toHaveLength(6);
+
+    // 1st render: top-level useState(4)
+    expect(changeDescriptions[0]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 0,
+              "hookName": "State",
+              "hookPath": [
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+
+    // 2nd render: useConditionalStateHook with subhook state derived from x
+    expect(changeDescriptions[1]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 1,
+              "hookName": "State",
+              "hookPath": [
+                "ConditionalStateHook",
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+
+    // 3rd render: useCustomHook(10)
+    expect(changeDescriptions[2]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 2,
+              "hookName": "State",
+              "hookPath": [
+                "CustomHook(10)",
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+
+    // 4th render: useCustomHook("10")
+    expect(changeDescriptions[3]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 3,
+              "hookName": "State",
+              "hookPath": [
+                "CustomHook("10")",
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+
+    // 5th render: useCustomHook(undefined)
+    expect(changeDescriptions[4]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 4,
+              "hookName": "State",
+              "hookPath": [
+                "CustomHook",
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+
+    // 6th render: useCustomHook() without an argument
+    expect(changeDescriptions[5]).toMatchInlineSnapshot(`
+      Map {
+        "Component" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 5,
+              "hookName": "State",
+              "hookPath": [
+                "CustomHook",
+                "State",
+              ],
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+  });
+
+  // @reactVersion >= 16.9
   it('should collect data for each rendered fiber', () => {
     const Parent = ({count}) => {
       Scheduler.unstable_advanceTime(10);
