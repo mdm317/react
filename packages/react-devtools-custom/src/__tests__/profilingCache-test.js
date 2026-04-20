@@ -773,7 +773,7 @@ describe('ProfilingCache', () => {
                 "columnNumber": 13,
                 "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 691,
+                "lineNumber": 692,
               },
             },
           ],
