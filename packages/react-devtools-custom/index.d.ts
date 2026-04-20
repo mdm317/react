@@ -125,7 +125,22 @@ export type FiberRoot = {
   current: Fiber | null;
 };
 
-export type ChangedHook = {
+// Low-level hook change detected by diffing the prev/next fiber's memoizedState
+// linked list. `hookIndex` is the raw position in that list; no hook-tree
+// metadata (name/path/source) has been resolved yet. Produced by
+// getChangedHooksIndices during commit.
+export type DetectedHookChange = {
+  hookIndex: number;
+  prev: unknown;
+  next: unknown;
+};
+
+// Hook change after matching a DetectedHookChange against the hook tree from
+// inspectHooksOfFiber. `hookIndex` is remapped to the resolved hook-tree index
+// (`hook.id`) for the matching slot-consuming hook, and
+// hookName/hookPath/hookSource carry the resolved metadata. Produced by
+// flushCommit at endRecording time.
+export type ResolvedHookChange = {
   hookIndex: number;
   hookName?: string | null;
   hookPath?: Array<string> | null;
@@ -137,23 +152,27 @@ export type ChangedHook = {
 export type ChangeDescription = {
   context: Array<string> | boolean | null;
   didHooksChange: boolean;
-  hooks?: Array<ChangedHook> | null;
+  // DetectedHookChange while recording; ResolvedHookChange after flushCommit.
+  hooks?: Array<DetectedHookChange | ResolvedHookChange> | null;
   isFirstMount: boolean;
   props: Array<string> | null;
   state: Array<string> | null;
 };
 
 export type CommittedFiberChange = {
-  changeDescription: ChangeDescription;
   displayName: string | null;
   fiber: Fiber;
   prevFiber: Fiber | null;
-};
+} & ChangeDescription;
 
 export declare function onCommitFiber(
   root: FiberRoot,
   currentDispatcherRef?: unknown,
 ): Array<CommittedFiberChange>;
+
+export declare function startRecording(): void;
+
+export declare function endRecording(): Array<Array<CommittedFiberChange>>;
 
 export declare function installHook(
   target: any,
