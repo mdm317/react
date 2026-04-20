@@ -27,6 +27,7 @@ import type {
   ResolvedHookChange,
 } from './collectFiberChanges';
 import collectFiberChanges from './collectFiberChanges';
+import getHookName from './util/getHookName';
 
 let isRecording: boolean = false;
 type CommitRecord = {
@@ -75,9 +76,10 @@ function collectHooksByMemoizedStateIndex(
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
   for (const hook of tree) {
     if (hook.subHooks.length > 0) {
+      const hookName = getHookName(hook);
       memoizedStateIndex = collectHooksByMemoizedStateIndex(
         hook.subHooks,
-        [...path, hook.name],
+        [...path, hookName],
         hooksByMemoizedStateIndex,
         memoizedStateIndex,
       );
