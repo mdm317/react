@@ -204,7 +204,12 @@ function collectFiberChanges(
 }
 
 let isRecording: boolean = false;
-let changes: Array<Array<CommittedFiberChange>> = [];
+type CommitRecord = {
+  changes: Array<CommittedFiberChange>,
+  currentDispatcherRef?: mixed,
+};
+
+let changes: Array<CommitRecord> = [];
 
 type HookLookupEntry = {
   hook: HooksNode,
@@ -212,6 +217,11 @@ type HookLookupEntry = {
 };
 
 type HooksByFiberMemoizedStateIndex = Map<number, HookLookupEntry>;
+
+type HookLookupCacheEntry = {
+  currentDispatcherRef?: mixed,
+  hooksByFiberMemoizedStateIndex: HooksByFiberMemoizedStateIndex | null,
+};
 
 function getMemoizedStateConsumption(hook: HooksNode): number {
   // Native hooks with id === null do not call nextHook() and so consume 0 slots.
@@ -275,18 +285,23 @@ function isStatefulHookNode(hook: HooksNode): boolean {
 }
 
 function getHooksByFiberMemoizedStateIndex(
-  cache: Map<Fiber, HooksByFiberMemoizedStateIndex | null>,
+  cache: Map<Fiber, HookLookupCacheEntry>,
   fiber: Fiber,
+  currentDispatcherRef?: mixed,
 ): HooksByFiberMemoizedStateIndex | null {
   const cached = cache.get(fiber);
-  if (cached !== undefined) {
-    return cached;
+  if (
+    cached !== undefined &&
+    cached.currentDispatcherRef === currentDispatcherRef
+  ) {
+    return cached.hooksByFiberMemoizedStateIndex;
   }
 
   let hooksTree: HooksTree | null = null;
   try {
-    hooksTree = inspectHooksOfFiber(fiber);
+    hooksTree = inspectHooksOfFiber(fiber, currentDispatcherRef);
   } catch (error) {
+    console.error('failed to inpect hook tree', error);
     hooksTree = null;
   }
 
@@ -303,18 +318,20 @@ function getHooksByFiberMemoizedStateIndex(
     );
   }
 
-  cache.set(fiber, hooksByFiberMemoizedStateIndex);
+  cache.set(fiber, {
+    currentDispatcherRef,
+    hooksByFiberMemoizedStateIndex,
+  });
   return hooksByFiberMemoizedStateIndex;
 }
 
 function flushCommit(): Array<Array<CommittedFiberChange>> {
   const flushed: Array<Array<CommittedFiberChange>> = [];
-  const hooksByFiberMemoizedStateIndexByFiber: Map<
-    Fiber,
-    HooksByFiberMemoizedStateIndex | null,
-  > = new Map();
+  const hooksByFiberMemoizedStateIndexByFiber: Map<Fiber, HookLookupCacheEntry> =
+    new Map();
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
-  for (const commitChanges of changes) {
+  for (const commitRecord of changes) {
+    const {changes: commitChanges, currentDispatcherRef} = commitRecord;
     const nextCommitChanges: Array<CommittedFiberChange> = [];
     // eslint-disable-next-line no-for-of-loops/no-for-of-loops
     for (const change of commitChanges) {
@@ -327,11 +344,11 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
         continue;
       }
 
-      const hooksByFiberMemoizedStateIndex =
-        getHooksByFiberMemoizedStateIndex(
-          hooksByFiberMemoizedStateIndexByFiber,
-          change.fiber,
-        );
+      const hooksByFiberMemoizedStateIndex = getHooksByFiberMemoizedStateIndex(
+        hooksByFiberMemoizedStateIndexByFiber,
+        change.fiber,
+        currentDispatcherRef,
+      );
 
       if (hooksByFiberMemoizedStateIndex === null) {
         nextCommitChanges.push(change);
@@ -345,8 +362,9 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
       const resolvedHooks: Array<ResolvedHookChange> = [];
       // eslint-disable-next-line no-for-of-loops/no-for-of-loops
       for (const hookIndex of hookIndices) {
-        const resolvedHook =
-          hooksByFiberMemoizedStateIndex.get(hookIndex.hookIndex);
+        const resolvedHook = hooksByFiberMemoizedStateIndex.get(
+          hookIndex.hookIndex,
+        );
         if (resolvedHook === undefined) {
           console.error(
             'react-devtools-custom: no hook found at fiber memoizedState index %s for fiber %o',
@@ -395,7 +413,10 @@ export function endRecording(): Array<Array<CommittedFiberChange>> {
   return recorded;
 }
 
-export function onCommitFiber(root: FiberRoot): Array<CommittedFiberChange> {
+export function onCommitFiber(
+  root: FiberRoot,
+  currentDispatcherRef?: mixed,
+): Array<CommittedFiberChange> {
   if (!isRecording) {
     return [];
   }
@@ -405,7 +426,10 @@ export function onCommitFiber(root: FiberRoot): Array<CommittedFiberChange> {
 
   const commitChanges: Array<CommittedFiberChange> = [];
   collectFiberChanges(root.current, commitChanges);
-  changes.push(commitChanges);
+  changes.push({
+    changes: commitChanges,
+    currentDispatcherRef,
+  });
 
   return commitChanges;
 }
