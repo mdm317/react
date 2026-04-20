@@ -16,6 +16,28 @@ jest.mock('react-devtools-core/backend', () =>
 
 import {getVersionedRenderImplementation} from 'react-devtools-shared/src/__tests__/utils';
 
+function normalizeHookSource(hookSource) {
+  if (hookSource == null) {
+    return hookSource;
+  }
+
+  let fileName = hookSource.fileName;
+  if (fileName != null) {
+    fileName = fileName.replace(/\\/g, '/');
+    const index = fileName.lastIndexOf('/react-devtools-custom/');
+    if (index >= 0) {
+      fileName = fileName.slice(index + 1);
+    }
+  }
+
+  return {
+    ...hookSource,
+    columnNumber: 'removed by test helper',
+    fileName,
+    lineNumber: 'removed by test helper',
+  };
+}
+
 function toChangeDescriptionsByDisplayName(commitChanges) {
   const map = new Map();
   for (const change of commitChanges) {
@@ -32,7 +54,7 @@ function toChangeDescriptionsByDisplayName(commitChanges) {
             hookIndex: h.hookIndex,
             hookName: h.hookName,
             hookPath: h.hookPath,
-            hookSource: h.hookSource,
+            hookSource: normalizeHookSource(h.hookSource),
           }))
         : change.hooks;
     }
@@ -292,10 +314,10 @@ describe('ProfilingCache', () => {
                 "Reducer",
               ],
               "hookSource": {
-                "columnNumber": 24,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 169,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -320,10 +342,10 @@ describe('ProfilingCache', () => {
                 "State",
               ],
               "hookSource": {
-                "columnNumber": 24,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 168,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -362,10 +384,10 @@ describe('ProfilingCache', () => {
                 "SyncExternalStore",
               ],
               "hookSource": {
-                "columnNumber": 13,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 170,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -497,10 +519,10 @@ describe('ProfilingCache', () => {
                 "State",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 408,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -525,10 +547,10 @@ describe('ProfilingCache', () => {
                 "SyncExternalStore",
               ],
               "hookSource": {
-                "columnNumber": 30,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 411,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -553,10 +575,10 @@ describe('ProfilingCache', () => {
                 "Transition",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 417,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -581,10 +603,10 @@ describe('ProfilingCache', () => {
                 "Transition",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 417,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -609,10 +631,10 @@ describe('ProfilingCache', () => {
                 "ActionState",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 420,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -638,10 +660,10 @@ describe('ProfilingCache', () => {
                 "State",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "useCustomHook",
-                "lineNumber": 396,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -666,10 +688,10 @@ describe('ProfilingCache', () => {
                 "State",
               ],
               "hookSource": {
-                "columnNumber": 15,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 429,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
@@ -770,10 +792,10 @@ describe('ProfilingCache', () => {
                 "State",
               ],
               "hookSource": {
-                "columnNumber": 13,
-                "fileName": "/Users/jeong-yunjo/Desktop/my-react/packages/react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
                 "functionName": "Component",
-                "lineNumber": 692,
+                "lineNumber": "removed by test helper",
               },
             },
           ],
