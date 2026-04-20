@@ -32,8 +32,10 @@ jobs:
           key: runtime-node_modules-v7-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - run: yarn install --frozen-lockfile
         if: steps.node_modules.outputs.cache-hit != 'true'
+      - name: Build React bundles for DevTools tests
+        run: yarn build-for-devtools
       - name: Run react-devtools-custom Jest suite
-        run: node ./scripts/jest/jest-cli.js --ci packages/react-devtools-custom/__tests__/index.test.js
+        run: node ./scripts/jest/jest-cli.js --build --project devtools --release-channel=experimental --ci packages/react-devtools-custom/src/__tests__/profilingCache-test.js
 
   create_release:
     name: Create versioned release from package.json
