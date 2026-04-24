@@ -160,9 +160,14 @@ export type ChangeDescription = {
 };
 
 export type CommittedFiberChange = {
+  // Inclusive render duration for this Fiber in milliseconds, if profiling
+  // timings are available for the current React build.
+  actualDuration: number | null;
   displayName: string | null;
   fiber: Fiber;
   prevFiber: Fiber | null;
+  // Render duration excluding direct child Fibers in milliseconds.
+  selfDuration: number | null;
 } & ChangeDescription;
 
 export declare function onCommitFiber(
