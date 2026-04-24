@@ -156,6 +156,44 @@ describe('ProfilingCache', () => {
     });
   });
 
+  // @reactVersion >= 16.9
+  it('should include render durations for each rendered fiber', () => {
+    function Parent() {
+      Scheduler.unstable_advanceTime(10);
+      return <Child />;
+    }
+
+    function Child() {
+      Scheduler.unstable_advanceTime(5);
+      return null;
+    }
+
+    utils.act(() => startRecording());
+    utils.act(() => render(<Parent />));
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(1);
+
+    const parentChange = recorded[0].find(
+      change => change.displayName === 'Parent',
+    );
+    const childChange = recorded[0].find(
+      change => change.displayName === 'Child',
+    );
+
+    expect(parentChange).toMatchObject({
+      actualDuration: 15,
+      selfDuration: 10,
+    });
+    expect(childChange).toMatchObject({
+      actualDuration: 5,
+      selfDuration: 5,
+    });
+  });
+
   // @reactVersion >= 18.0
   it('should properly detect changed hooks', () => {
     const Context = React.createContext(0);

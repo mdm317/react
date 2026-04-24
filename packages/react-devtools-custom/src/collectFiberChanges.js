@@ -54,9 +54,14 @@ export type ChangeDescription = {
 };
 
 export type CommittedFiberChange = {
+  // Inclusive render duration for this Fiber in milliseconds, if profiling
+  // timings are available for the current React build.
+  actualDuration: number | null,
   displayName: string | null,
   fiber: Fiber,
   prevFiber: Fiber | null,
+  // Render duration excluding direct child Fibers in milliseconds.
+  selfDuration: number | null,
   ...ChangeDescription,
 };
 
@@ -71,6 +76,26 @@ const ReactTypeOfWork = {
 
 function getDisplayNameForFiber(fiber: Fiber): string | null {
   return getComponentNameFromType(fiber.type);
+}
+
+function getActualDuration(fiber: Fiber): number | null {
+  return fiber.actualDuration != null ? fiber.actualDuration : null;
+}
+
+function getSelfDuration(fiber: Fiber): number | null {
+  const actualDuration = getActualDuration(fiber);
+  if (actualDuration === null) {
+    return null;
+  }
+
+  let selfDuration = actualDuration;
+  let child = fiber.child;
+  while (child !== null) {
+    selfDuration -= child.actualDuration || 0;
+    child = child.sibling;
+  }
+
+  return selfDuration;
 }
 
 function getChangedHooksIndices(
@@ -173,9 +198,11 @@ export default function collectFiberChanges(
     if (changeDescription !== null) {
       changes.push({
         ...changeDescription,
+        actualDuration: getActualDuration(fiber),
         displayName: getDisplayNameForFiber(fiber),
         fiber,
         prevFiber,
+        selfDuration: getSelfDuration(fiber),
       });
     }
   }
