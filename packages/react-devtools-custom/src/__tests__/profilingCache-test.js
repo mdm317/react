@@ -83,15 +83,22 @@ function installDevToolsCustomHook() {
     disableSecondConsoleLogDimmingInStrictMode: false,
   });
 
-  // Wrap onCommitFiberRoot so every React commit feeds devtools-custom.
+  // Wrap onCommitFiberRoot so every React commit feeds devtools-custom and
+  // captures every known root for startRecording().
+  const roots = new Set();
   const hook = global.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   const originalOnCommit = hook.onCommitFiberRoot;
   hook.onCommitFiberRoot = function (rendererID, root, priorityLevel) {
     originalOnCommit.call(this, rendererID, root, priorityLevel);
+    roots.add(root);
     onCommitFiber(root);
   };
 
-  return {startRecording, endRecording, onCommitFiber};
+  return {
+    startRecording: () => startRecording(Array.from(roots)),
+    endRecording,
+    onCommitFiber,
+  };
 }
 
 describe('ProfilingCache', () => {
@@ -1290,6 +1297,199 @@ describe('ProfilingCache', () => {
       isFirstMount: false,
       props: [],
       state: null,
+    });
+  });
+
+  // @reactVersion >= 18.0
+  it('should not report stale isFirstMount for fibers mounted before recording when a sibling triggers a deep bailout', () => {
+    let setSiblingState = null;
+
+    function Sibling() {
+      const [, _setSiblingState] = React.useState(0);
+      setSiblingState = _setSiblingState;
+      return null;
+    }
+
+    function Inner() {
+      return null;
+    }
+
+    function Bystander() {
+      return <Inner />;
+    }
+
+    function App() {
+      return (
+        <React.Fragment>
+          <Sibling />
+          <Bystander />
+        </React.Fragment>
+      );
+    }
+
+    // Mount before recording. Inner.alternate is null (first mount, never WIP'd).
+    utils.act(() => render(<App />));
+
+    utils.act(() => startRecording());
+
+    // Sibling re-renders. App clones direct children (Sibling, Bystander) via
+    // cloneChildFibers, but Bystander deep-bails so Inner is reused as-is and
+    // keeps alternate === null on the new root.current tree.
+    utils.act(() => setSiblingState(1));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(1);
+
+    // Inner was mounted before recording. It must not appear as a first-mount
+    // change just because its alternate is still null after deep bailout.
+    const innerChanges = recorded[0].filter(c => c.displayName === 'Inner');
+    expect(innerChanges).toEqual([]);
+
+    // Bystander itself was cloned by App but did not render. Should not be in
+    // changes either.
+    const bystanderChanges = recorded[0].filter(
+      c => c.displayName === 'Bystander',
+    );
+    expect(bystanderChanges).toEqual([]);
+
+    // Sanity: Sibling did re-render and should be in changes (not isFirstMount).
+    const siblingChanges = recorded[0].filter(c => c.displayName === 'Sibling');
+    expect(siblingChanges).toHaveLength(1);
+    expect(siblingChanges[0].isFirstMount).toBe(false);
+  });
+
+  // @reactVersion >= 18.0
+  it('should snapshot fibers mounted before recording across multiple roots', () => {
+    let setRootASiblingState = null;
+
+    function RootASibling() {
+      const [, _setRootASiblingState] = React.useState(0);
+      setRootASiblingState = _setRootASiblingState;
+      return null;
+    }
+
+    function RootAInner() {
+      return null;
+    }
+
+    function RootABystander() {
+      return <RootAInner />;
+    }
+
+    function RootAApp() {
+      return (
+        <React.Fragment>
+          <RootASibling />
+          <RootABystander />
+        </React.Fragment>
+      );
+    }
+
+    function RootBApp() {
+      return null;
+    }
+
+    const containerA = document.createElement('div');
+    const containerB = document.createElement('div');
+    document.body.appendChild(containerA);
+    document.body.appendChild(containerB);
+
+    const rootA = ReactDOMClient.createRoot(containerA);
+    const rootB = ReactDOMClient.createRoot(containerB);
+
+    try {
+      // Mount both roots before recording. Root B commits last, so a single
+      // last-root snapshot would miss Root A.
+      utils.act(() => rootA.render(<RootAApp />));
+      utils.act(() => rootB.render(<RootBApp />));
+
+      utils.act(() => startRecording());
+
+      // Root A's sibling re-renders. RootAInner remains deep-bailed with
+      // alternate === null and must be recognized as pre-existing.
+      utils.act(() => setRootASiblingState(1));
+
+      let recorded;
+      utils.act(() => {
+        recorded = endRecording();
+      });
+
+      expect(recorded).toHaveLength(1);
+
+      const innerChanges = recorded[0].filter(
+        c => c.displayName === 'RootAInner',
+      );
+      expect(innerChanges).toEqual([]);
+
+      const siblingChanges = recorded[0].filter(
+        c => c.displayName === 'RootASibling',
+      );
+      expect(siblingChanges).toHaveLength(1);
+      expect(siblingChanges[0].isFirstMount).toBe(false);
+    } finally {
+      utils.act(() => {
+        rootA.unmount();
+        rootB.unmount();
+      });
+      document.body.removeChild(containerA);
+      document.body.removeChild(containerB);
+    }
+  });
+
+  // @reactVersion >= 18.0
+  it('should report isFirstMount for components mounted during recording', () => {
+    let setShowExtra = null;
+
+    function Existing() {
+      return null;
+    }
+
+    function Extra() {
+      return null;
+    }
+
+    function App() {
+      const [showExtra, _setShowExtra] = React.useState(false);
+      setShowExtra = _setShowExtra;
+      return (
+        <React.Fragment>
+          <Existing />
+          {showExtra ? <Extra /> : null}
+        </React.Fragment>
+      );
+    }
+
+    // Mount before recording. Existing.alternate === null at this point.
+    utils.act(() => render(<App />));
+
+    utils.act(() => startRecording());
+
+    // App re-renders adding Extra. Existing is cloned via reconciliation.
+    utils.act(() => setShowExtra(true));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(1);
+
+    // Extra was mounted during recording — must be reported as first mount.
+    const extraChanges = recorded[0].filter(c => c.displayName === 'Extra');
+    expect(extraChanges).toHaveLength(1);
+    expect(extraChanges[0].isFirstMount).toBe(true);
+
+    // Existing was already mounted before recording — must not be a first
+    // mount even though it is reachable from the new root.current tree.
+    const existingChanges = recorded[0].filter(
+      c => c.displayName === 'Existing',
+    );
+    existingChanges.forEach(change => {
+      expect(change.isFirstMount).toBe(false);
     });
   });
 });
