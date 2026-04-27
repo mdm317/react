@@ -175,7 +175,7 @@ export declare function onCommitFiber(
   currentDispatcherRef?: unknown,
 ): Array<CommittedFiberChange>;
 
-export declare function startRecording(): void;
+export declare function startRecording(roots: FiberRoot | Array<FiberRoot>): void;
 
 export declare function endRecording(): Array<Array<CommittedFiberChange>>;
 

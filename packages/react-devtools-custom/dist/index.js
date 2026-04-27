@@ -2427,12 +2427,27 @@ function getChangeDescription(prevFiber, nextFiber) {
       return null;
   }
 }
-function collectFiberChanges(fiber, changes) {
+function collectFiberChanges(fiber, changes, mountedFibers) {
   if (fiber === null) {
     return;
   }
   const prevFiber = fiber.alternate;
-  if (prevFiber === null || didFiberRender(ReactTypeOfWork, prevFiber, fiber)) {
+  if (prevFiber === null) {
+    if (!mountedFibers.has(fiber)) {
+      const changeDescription = getChangeDescription(prevFiber, fiber);
+      if (changeDescription !== null) {
+        changes.push({
+          ...changeDescription,
+          actualDuration: getActualDuration(fiber),
+          displayName: getDisplayNameForFiber(fiber),
+          fiber,
+          prevFiber,
+          selfDuration: getSelfDuration(fiber)
+        });
+      }
+      mountedFibers.add(fiber);
+    }
+  } else if (didFiberRender(ReactTypeOfWork, prevFiber, fiber)) {
     const changeDescription = getChangeDescription(prevFiber, fiber);
     if (changeDescription !== null) {
       changes.push({
@@ -2445,8 +2460,8 @@ function collectFiberChanges(fiber, changes) {
       });
     }
   }
-  collectFiberChanges(fiber.child, changes);
-  collectFiberChanges(fiber.sibling, changes);
+  collectFiberChanges(fiber.child, changes, mountedFibers);
+  collectFiberChanges(fiber.sibling, changes, mountedFibers);
 }
 // EXTERNAL MODULE: ../../node_modules/lru-cache/index.js
 var lru_cache = __webpack_require__(730);
@@ -4033,6 +4048,23 @@ function getHookName(hook) {
 
 let isRecording = false;
 let changes = [];
+let mountedFibersByRoot = new WeakMap();
+function getOrCreateMountedFibersForRoot(root) {
+  let set = mountedFibersByRoot.get(root);
+  if (set === undefined) {
+    set = new WeakSet();
+    mountedFibersByRoot.set(root, set);
+  }
+  return set;
+}
+function snapshotMountedFibers(fiber, set) {
+  if (fiber === null) {
+    return;
+  }
+  set.add(fiber);
+  snapshotMountedFibers(fiber.child, set);
+  snapshotMountedFibers(fiber.sibling, set);
+}
 function getMemoizedStateConsumption(hook) {
   if (hook.id === null) {
     return 0;
@@ -4145,7 +4177,15 @@ function flushCommit() {
   }
   return flushed;
 }
-function startRecording() {
+function startRecording(rootOrRoots) {
+  mountedFibersByRoot = new WeakMap();
+  const roots = Array.isArray(rootOrRoots) ? rootOrRoots : [rootOrRoots];
+  roots.forEach(root => {
+    if (root != null && root.current != null) {
+      const set = getOrCreateMountedFibersForRoot(root);
+      snapshotMountedFibers(root.current, set);
+    }
+  });
   isRecording = true;
   changes = [];
 }
@@ -4153,6 +4193,7 @@ function endRecording() {
   isRecording = false;
   const recorded = flushCommit();
   changes = [];
+  mountedFibersByRoot = new WeakMap();
   return recorded;
 }
 function onCommitFiber(root, currentDispatcherRef) {
@@ -4163,7 +4204,8 @@ function onCommitFiber(root, currentDispatcherRef) {
     return [];
   }
   const commitChanges = [];
-  collectFiberChanges(root.current, commitChanges);
+  const mountedFibers = getOrCreateMountedFibersForRoot(root);
+  collectFiberChanges(root.current, commitChanges, mountedFibers);
   changes.push({
     changes: commitChanges,
     currentDispatcherRef

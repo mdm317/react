@@ -187,13 +187,33 @@ function getChangeDescription(
 export default function collectFiberChanges(
   fiber: Fiber | null,
   changes: Array<CommittedFiberChange>,
+  mountedFibers: WeakSet<Fiber>,
 ): void {
   if (fiber === null) {
     return;
   }
 
   const prevFiber = fiber.alternate;
-  if (prevFiber === null || didFiberRender(ReactTypeOfWork, prevFiber, fiber)) {
+  if (prevFiber === null) {
+    // alternate === null can mean either "newly mounted this commit" or "was
+    // mounted before recording started and never WIP'd since (deep bailout
+    // reuses the original fiber via cloneChildFibers no-op)". mountedFibers
+    // captures the latter case at startRecording time.
+    if (!mountedFibers.has(fiber)) {
+      const changeDescription = getChangeDescription(prevFiber, fiber);
+      if (changeDescription !== null) {
+        changes.push({
+          ...changeDescription,
+          actualDuration: getActualDuration(fiber),
+          displayName: getDisplayNameForFiber(fiber),
+          fiber,
+          prevFiber,
+          selfDuration: getSelfDuration(fiber),
+        });
+      }
+      mountedFibers.add(fiber);
+    }
+  } else if (didFiberRender(ReactTypeOfWork, prevFiber, fiber)) {
     const changeDescription = getChangeDescription(prevFiber, fiber);
     if (changeDescription !== null) {
       changes.push({
@@ -207,6 +227,6 @@ export default function collectFiberChanges(
     }
   }
 
-  collectFiberChanges(fiber.child, changes);
-  collectFiberChanges(fiber.sibling, changes);
+  collectFiberChanges(fiber.child, changes, mountedFibers);
+  collectFiberChanges(fiber.sibling, changes, mountedFibers);
 }

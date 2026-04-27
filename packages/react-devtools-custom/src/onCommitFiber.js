@@ -8,10 +8,7 @@
  */
 
 import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
-import type {
-  HooksNode,
-  HooksTree,
-} from 'react-debug-tools/src/ReactDebugHooks';
+import type {HooksNode, HooksTree} from 'react-debug-tools/src/ReactDebugHooks';
 
 export type {Fiber, FiberRoot};
 export type {
@@ -36,6 +33,35 @@ type CommitRecord = {
 };
 
 let changes: Array<CommitRecord> = [];
+// Fibers that we know are (or have been) mounted in each FiberRoot. Populated
+// at startRecording from the snapshot of root.current and extended on every
+// first-mount we report during recording so that subsequent commits don't
+// double-count the same fiber when its alternate stays null due to deep
+// bailout (see ReactFiberBeginWork.bailoutOnAlreadyFinishedWork). Tracking per
+// root makes the data ownership explicit and lets the WeakMap drop a root's
+// set automatically once the root itself is no longer referenced.
+let mountedFibersByRoot: WeakMap<FiberRoot, WeakSet<Fiber>> = new WeakMap();
+
+function getOrCreateMountedFibersForRoot(root: FiberRoot): WeakSet<Fiber> {
+  let set = mountedFibersByRoot.get(root);
+  if (set === undefined) {
+    set = new WeakSet();
+    mountedFibersByRoot.set(root, set);
+  }
+  return set;
+}
+
+function snapshotMountedFibers(
+  fiber: Fiber | null,
+  set: WeakSet<Fiber>,
+): void {
+  if (fiber === null) {
+    return;
+  }
+  set.add(fiber);
+  snapshotMountedFibers(fiber.child, set);
+  snapshotMountedFibers(fiber.sibling, set);
+}
 
 type ResolvedHookEntry = {
   hook: HooksNode,
@@ -188,9 +214,7 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
       const resolvedHooks: Array<ResolvedHookChange> = [];
       // eslint-disable-next-line no-for-of-loops/no-for-of-loops
       for (const hookIndex of hookIndices) {
-        const resolvedHook = hooksByMemoizedStateIndex.get(
-          hookIndex.hookIndex,
-        );
+        const resolvedHook = hooksByMemoizedStateIndex.get(hookIndex.hookIndex);
         if (resolvedHook === undefined) {
           console.error(
             'react-devtools-custom: no hook found at fiber memoizedState index %s for fiber %o',
@@ -224,7 +248,20 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
   return flushed;
 }
 
-export function startRecording(): void {
+export function startRecording(
+  rootOrRoots: FiberRoot | Array<FiberRoot>,
+): void {
+  mountedFibersByRoot = new WeakMap();
+  const roots = Array.isArray(rootOrRoots) ? rootOrRoots : [rootOrRoots];
+  // Snapshot the fibers currently mounted in each root so that pre-existing
+  // fibers reached via deep bailout (alternate === null) are not mistakenly
+  // reported as first mounts in subsequent commits.
+  roots.forEach(root => {
+    if (root != null && root.current != null) {
+      const set = getOrCreateMountedFibersForRoot(root);
+      snapshotMountedFibers(root.current, set);
+    }
+  });
   isRecording = true;
   changes = [];
 }
@@ -233,6 +270,7 @@ export function endRecording(): Array<Array<CommittedFiberChange>> {
   isRecording = false;
   const recorded = flushCommit();
   changes = [];
+  mountedFibersByRoot = new WeakMap();
   return recorded;
 }
 
@@ -248,7 +286,8 @@ export function onCommitFiber(
   }
 
   const commitChanges: Array<CommittedFiberChange> = [];
-  collectFiberChanges(root.current, commitChanges);
+  const mountedFibers = getOrCreateMountedFibersForRoot(root);
+  collectFiberChanges(root.current, commitChanges, mountedFibers);
   changes.push({
     changes: commitChanges,
     currentDispatcherRef,
