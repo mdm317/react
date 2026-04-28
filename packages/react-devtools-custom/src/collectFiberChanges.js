@@ -227,6 +227,12 @@ export default function collectFiberChanges(
     }
   }
 
-  collectFiberChanges(fiber.child, changes, mountedFibers);
+  const subtreeFullyBailedOut =
+    fiber.child !== null &&
+    prevFiber !== null &&
+    fiber.child === prevFiber.child;
+  if (!subtreeFullyBailedOut) {
+    collectFiberChanges(fiber.child, changes, mountedFibers);
+  }
   collectFiberChanges(fiber.sibling, changes, mountedFibers);
 }

@@ -1492,4 +1492,70 @@ describe('ProfilingCache', () => {
       expect(change.isFirstMount).toBe(false);
     });
   });
+
+  // @reactVersion >= 18.0
+  it('should not record stale hook changes from before startRecording when a memoized subtree fully bails out during recording', () => {
+    let setLabel = null;
+    let dispatchChild = null;
+
+    function Child() {
+      const [, dispatch] = React.useReducer(s => s + 1, 0);
+      dispatchChild = dispatch;
+      return null;
+    }
+
+    const Memoed = React.memo(function Memoed() {
+      return <Child />;
+    });
+
+    function Root() {
+      const [label, setState] = React.useState('a');
+      setLabel = setState;
+      return (
+        <React.Fragment>
+          {label}
+          <Memoed />
+        </React.Fragment>
+      );
+    }
+
+    utils.act(() => render(<Root />));
+    utils.act(() => dispatchChild());
+
+    utils.act(() => startRecording());
+    utils.act(() => setLabel('b'));
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(toChangeDescriptionsByDisplayName(recorded[0]))
+      .toMatchInlineSnapshot(`
+      Map {
+        "Root" => {
+          "context": false,
+          "didHooksChange": true,
+          "hooks": [
+            {
+              "hookIndex": 0,
+              "hookName": "State",
+              "hookPath": [
+                "State",
+              ],
+              "hookSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Root",
+                "lineNumber": "removed by test helper",
+              },
+            },
+          ],
+          "isFirstMount": false,
+          "props": [],
+          "state": null,
+        },
+      }
+    `);
+  });
 });
