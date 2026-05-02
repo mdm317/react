@@ -78,6 +78,19 @@ let bridge: FrontendBridge | null = null;
 let store: Store | null = null;
 let root = null;
 
+export type RankedProfilerSummaryComponent = {
+  name: string,
+  duration: number,
+};
+
+export type RankedProfilerSummaryCommit = {
+  rootID: number,
+  rootDisplayName: string,
+  commitIndex: number,
+  commitDuration: number,
+  components: Array<RankedProfilerSummaryComponent>,
+};
+
 const log = (...args: Array<mixed>) => console.log('[React DevTools]', ...args);
 log.warn = (...args: Array<mixed>) => console.warn('[React DevTools]', ...args);
 log.error = (...args: Array<mixed>) =>
@@ -226,6 +239,43 @@ function openProfiler() {
   );
 
   reload();
+}
+
+function getRankedProfilerSummary(): Array<RankedProfilerSummaryCommit> | null {
+  const profilerStore = store?.profilerStore;
+  const profilingData = profilerStore?.profilingData;
+  if (profilerStore == null || profilingData == null) {
+    return null;
+  }
+
+  const summary: Array<RankedProfilerSummaryCommit> = [];
+  profilingData.dataForRoots.forEach(dataForRoot => {
+    const {commitData, displayName, rootID} = dataForRoot;
+    for (let commitIndex = 0; commitIndex < commitData.length; commitIndex++) {
+      const commitTree = profilerStore.profilingCache.getCommitTree({
+        commitIndex,
+        rootID,
+      });
+      const chartData = profilerStore.profilingCache.getRankedChartData({
+        commitIndex,
+        commitTree,
+        rootID,
+      });
+
+      summary.push({
+        rootID,
+        rootDisplayName: displayName,
+        commitIndex,
+        commitDuration: commitData[commitIndex].duration,
+        components: chartData.nodes.map(({name, value}) => ({
+          name,
+          duration: value,
+        })),
+      });
+    }
+  });
+
+  return summary;
 }
 
 function initialize(socket: WebSocket) {
@@ -454,6 +504,7 @@ const DevtoolsUI = {
   setDisconnectedCallback,
   startServer,
   openProfiler,
+  getRankedProfilerSummary,
 };
 
 export default DevtoolsUI;
