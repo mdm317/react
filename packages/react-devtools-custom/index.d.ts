@@ -167,7 +167,7 @@ export type CommittedFiberChange = {
   fiber: Fiber;
   prevFiber: Fiber | null;
   // Render duration excluding direct child Fibers in milliseconds.
-  selfDuration: number | null;
+  selfDuration: number;
 } & ChangeDescription;
 
 export declare function onCommitFiber(

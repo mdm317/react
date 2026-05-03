@@ -61,7 +61,7 @@ export type CommittedFiberChange = {
   fiber: Fiber,
   prevFiber: Fiber | null,
   // Render duration excluding direct child Fibers in milliseconds.
-  selfDuration: number | null,
+  selfDuration: number,
   ...ChangeDescription,
 };
 
@@ -82,10 +82,10 @@ function getActualDuration(fiber: Fiber): number | null {
   return fiber.actualDuration != null ? fiber.actualDuration : null;
 }
 
-function getSelfDuration(fiber: Fiber): number | null {
+function getSelfDuration(fiber: Fiber): number {
   const actualDuration = getActualDuration(fiber);
   if (actualDuration === null) {
-    return null;
+    return 0;
   }
 
   let selfDuration = actualDuration;

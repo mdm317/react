@@ -2350,7 +2350,7 @@ function getActualDuration(fiber) {
 function getSelfDuration(fiber) {
   const actualDuration = getActualDuration(fiber);
   if (actualDuration === null) {
-    return null;
+    return 0;
   }
   let selfDuration = actualDuration;
   let child = fiber.child;
