@@ -4068,6 +4068,18 @@ function snapshotMountedFibers(fiber, set) {
   snapshotMountedFibers(fiber.child, set);
   snapshotMountedFibers(fiber.sibling, set);
 }
+function collectAliveFibers(fiber, set) {
+  if (fiber === null) {
+    return;
+  }
+  set.add(fiber);
+  if (fiber.alternate !== null) {
+    set.add(fiber.alternate);
+  }
+  collectAliveFibers(fiber.child, set);
+  collectAliveFibers(fiber.sibling, set);
+}
+let hookResolutionCache = new Map();
 function getMemoizedStateConsumption(hook) {
   if (hook.id === null) {
     return 0;
@@ -4132,7 +4144,6 @@ function getHooksByMemoizedStateIndex(cache, fiber, currentDispatcherRef) {
 }
 function flushCommit() {
   const flushed = [];
-  const hookResolutionCache = new Map();
   for (const commitRecord of changes) {
     const {
       changes: commitChanges,
@@ -4191,12 +4202,14 @@ function startRecording(rootOrRoots) {
   });
   isRecording = true;
   changes = [];
+  hookResolutionCache = new Map();
 }
 function endRecording() {
   isRecording = false;
   const recorded = flushCommit();
   changes = [];
   mountedFibersByRoot = new WeakMap();
+  hookResolutionCache = new Map();
   return recorded;
 }
 function onCommitFiber(root, currentDispatcherRef) {
@@ -4211,8 +4224,29 @@ function onCommitFiber(root, currentDispatcherRef) {
   collectFiberChanges(root.current, commitChanges, mountedFibers);
   changes.push({
     changes: commitChanges,
-    currentDispatcherRef
+    currentDispatcherRef,
+    root
   });
+  const aliveFibers = new Set();
+  collectAliveFibers(root.current, aliveFibers);
+  for (const commitRecord of changes) {
+    if (commitRecord.root !== root) {
+      continue;
+    }
+    for (const change of commitRecord.changes) {
+      const hookIndices = change.hooks;
+      if (hookIndices == null || hookIndices.length === 0) {
+        continue;
+      }
+      if (aliveFibers.has(change.fiber)) {
+        continue;
+      }
+      if (hookResolutionCache.has(change.fiber)) {
+        continue;
+      }
+      getHooksByMemoizedStateIndex(hookResolutionCache, change.fiber, commitRecord.currentDispatcherRef);
+    }
+  }
   return commitChanges;
 }
 ;// CONCATENATED MODULE: ./index.js

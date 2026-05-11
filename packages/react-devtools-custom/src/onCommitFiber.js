@@ -30,6 +30,7 @@ let isRecording: boolean = false;
 type CommitRecord = {
   changes: Array<CommittedFiberChange>,
   currentDispatcherRef?: mixed,
+  root: FiberRoot,
 };
 
 let changes: Array<CommitRecord> = [];
@@ -51,16 +52,27 @@ function getOrCreateMountedFibersForRoot(root: FiberRoot): WeakSet<Fiber> {
   return set;
 }
 
-function snapshotMountedFibers(
-  fiber: Fiber | null,
-  set: WeakSet<Fiber>,
-): void {
+function snapshotMountedFibers(fiber: Fiber | null, set: WeakSet<Fiber>): void {
   if (fiber === null) {
     return;
   }
   set.add(fiber);
   snapshotMountedFibers(fiber.child, set);
   snapshotMountedFibers(fiber.sibling, set);
+}
+
+// Fibers still safe to inspect: reachable from root.current with both
+// alternates kept, since detachFiberAfterEffects has not yet wiped them.
+function collectAliveFibers(fiber: Fiber | null, set: Set<Fiber>): void {
+  if (fiber === null) {
+    return;
+  }
+  set.add(fiber);
+  if (fiber.alternate !== null) {
+    set.add(fiber.alternate);
+  }
+  collectAliveFibers(fiber.child, set);
+  collectAliveFibers(fiber.sibling, set);
 }
 
 type ResolvedHookEntry = {
@@ -74,6 +86,12 @@ type HookResolutionCacheEntry = {
   currentDispatcherRef?: mixed,
   hooksByMemoizedStateIndex: HooksByMemoizedStateIndex | null,
 };
+
+// Cache of resolved hooks keyed by fiber. Pre-populated by onCommitFiber for
+// fibers that unmounted in the latest commit so flushCommit can read the
+// resolved metadata without touching a fiber that React's passive cleanup
+// (detachFiberAfterEffects) may have wiped between commit and endRecording.
+let hookResolutionCache: Map<Fiber, HookResolutionCacheEntry> = new Map();
 
 function getMemoizedStateConsumption(hook: HooksNode): number {
   // Native hooks with id === null do not call nextHook() and so consume 0 slots.
@@ -179,7 +197,6 @@ function getHooksByMemoizedStateIndex(
 
 function flushCommit(): Array<Array<CommittedFiberChange>> {
   const flushed: Array<Array<CommittedFiberChange>> = [];
-  const hookResolutionCache: Map<Fiber, HookResolutionCacheEntry> = new Map();
 
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
   for (const commitRecord of changes) {
@@ -264,6 +281,7 @@ export function startRecording(
   });
   isRecording = true;
   changes = [];
+  hookResolutionCache = new Map();
 }
 
 export function endRecording(): Array<Array<CommittedFiberChange>> {
@@ -271,6 +289,7 @@ export function endRecording(): Array<Array<CommittedFiberChange>> {
   const recorded = flushCommit();
   changes = [];
   mountedFibersByRoot = new WeakMap();
+  hookResolutionCache = new Map();
   return recorded;
 }
 
@@ -291,7 +310,39 @@ export function onCommitFiber(
   changes.push({
     changes: commitChanges,
     currentDispatcherRef,
+    root,
   });
+
+  // Resolve hook metadata eagerly for fibers in this root that are no longer
+  // in the tree after this commit. React's passive-effect cleanup wipes
+  // memoizedProps/State/dependencies on deleted fibers asynchronously after
+  // commit, which would make inspectHooksOfFiber throw at flush time.
+  const aliveFibers: Set<Fiber> = new Set();
+  collectAliveFibers(root.current, aliveFibers);
+  // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+  for (const commitRecord of changes) {
+    if (commitRecord.root !== root) {
+      continue;
+    }
+    // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+    for (const change of commitRecord.changes) {
+      const hookIndices = change.hooks;
+      if (hookIndices == null || hookIndices.length === 0) {
+        continue;
+      }
+      if (aliveFibers.has(change.fiber)) {
+        continue;
+      }
+      if (hookResolutionCache.has(change.fiber)) {
+        continue;
+      }
+      getHooksByMemoizedStateIndex(
+        hookResolutionCache,
+        change.fiber,
+        commitRecord.currentDispatcherRef,
+      );
+    }
+  }
 
   return commitChanges;
 }
