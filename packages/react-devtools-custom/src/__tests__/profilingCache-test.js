@@ -1559,3 +1559,168 @@ describe('ProfilingCache', () => {
     `);
   });
 });
+
+describe('Unmount tracking', () => {
+  let React;
+  let utils;
+  let startRecording;
+  let endRecording;
+
+  beforeEach(() => {
+    utils = require('react-devtools-shared/src/__tests__/utils');
+    utils.beforeEachProfiling();
+
+    ({startRecording, endRecording} = installDevToolsCustomHook());
+
+    React = require('react');
+    require('react-dom');
+    require('react-dom/client');
+  });
+
+  const {render} = getVersionedRenderImplementation();
+
+  // @reactVersion >= 18.0
+  it('resolves a queued hook change for a child that unmounts between commit and endRecording', () => {
+    let setChildState;
+    let setAppShow;
+
+    function Child() {
+      const [, setState] = React.useState('initial');
+      setChildState = setState;
+      return null;
+    }
+
+    function App() {
+      const [show, setShow] = React.useState(true);
+      setAppShow = setShow;
+      return show ? <Child /> : null;
+    }
+
+    utils.act(() => render(<App />));
+
+    utils.act(() => startRecording());
+    utils.act(() => setChildState('changed'));
+    utils.act(() => setAppShow(false));
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+    expect(recorded).toHaveLength(2);
+
+    const firstChild = recorded[0].find(c => c.displayName === 'Child');
+    expect(firstChild).toBeDefined();
+    expect(firstChild.didHooksChange).toBe(true);
+    expect(firstChild.hooks).toHaveLength(1);
+    expect(firstChild.hooks[0]).toMatchObject({
+      hookIndex: 0,
+      prev: 'initial',
+      next: 'changed',
+    });
+
+    const secondApp = recorded[1].find(c => c.displayName === 'App');
+    expect(secondApp).toBeDefined();
+    expect(secondApp.didHooksChange).toBe(true);
+    expect(secondApp.hooks).toHaveLength(1);
+    expect(secondApp.hooks[0]).toMatchObject({
+      hookIndex: 0,
+      prev: true,
+      next: false,
+    });
+  });
+
+  // @reactVersion >= 18.0
+  it('resolves a queued hook change for an unmounted forwardRef child whose render destructures props (would re-throw on a passive-detach-wiped fiber)', () => {
+    let setChildState;
+    let setAppShow;
+
+    const Child = function Child(componentProps, _ref) {
+      const {value} = componentProps;
+      const [, setState] = React.useState('initial');
+      setChildState = setState;
+      React.useEffect(() => {}, []);
+      return value;
+    };
+    Child.displayName = 'Child';
+
+    function App() {
+      const [show, setShow] = React.useState(true);
+      setAppShow = setShow;
+      return show ? <Child value="x" /> : null;
+    }
+
+    utils.act(() => render(<App />));
+
+    utils.act(() => startRecording());
+    utils.act(() => setChildState('changed'));
+    utils.act(() => setAppShow(false));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(2);
+
+    const firstChild = recorded[0].find(c => c.displayName === 'Child');
+    expect(firstChild).toBeDefined();
+    expect(firstChild.didHooksChange).toBe(true);
+    expect(firstChild.hooks).toHaveLength(1);
+    expect(firstChild.hooks[0]).toMatchObject({
+      hookIndex: 0,
+      hookName: 'State',
+      hookPath: ['State'],
+      hookSource: expect.objectContaining({functionName: 'Child'}),
+      prev: 'initial',
+      next: 'changed',
+    });
+  });
+
+  // @reactVersion >= 18.0
+  it('resolves a queued hook change for an unmounted child whose first hook is useContext (would re-throw on a passive-detach-wiped fiber)', () => {
+    const Ctx = React.createContext('default');
+    let setChildState;
+    let setAppShow;
+
+    function Child() {
+      React.useContext(Ctx);
+      const [, setState] = React.useState('initial');
+      setChildState = setState;
+      React.useEffect(() => {}, []);
+      return null;
+    }
+
+    function App() {
+      const [show, setShow] = React.useState(true);
+      setAppShow = setShow;
+      return (
+        <Ctx.Provider value="provided">{show ? <Child /> : null}</Ctx.Provider>
+      );
+    }
+
+    utils.act(() => render(<App />));
+
+    utils.act(() => startRecording());
+    utils.act(() => setChildState('changed'));
+    utils.act(() => setAppShow(false));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    expect(recorded).toHaveLength(2);
+
+    const firstChild = recorded[0].find(c => c.displayName === 'Child');
+    expect(firstChild).toBeDefined();
+    expect(firstChild.didHooksChange).toBe(true);
+    expect(firstChild.hooks).toHaveLength(1);
+    expect(firstChild.hooks[0]).toMatchObject({
+      hookIndex: 0,
+      hookName: 'State',
+      hookPath: ['State'],
+      hookSource: expect.objectContaining({functionName: 'Child'}),
+      prev: 'initial',
+      next: 'changed',
+    });
+  });
+});
