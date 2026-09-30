@@ -5,6 +5,15 @@ export type HookSource = {
   functionName: string | null;
 };
 
+export type ReactFunctionLocation = [string, string, number, number];
+
+export type FetchFileWithCaching = (url: string) => Promise<string>;
+
+export type SourceMappedLocation = {
+  location: ReactFunctionLocation;
+  ignored: boolean;
+};
+
 export type ComponentFilter = unknown;
 
 export type Handler = (data: unknown) => void;
@@ -178,6 +187,20 @@ export declare function onCommitFiber(
 export declare function startRecording(roots: FiberRoot | Array<FiberRoot>): void;
 
 export declare function endRecording(): Array<Array<CommittedFiberChange>>;
+
+export declare function symbolicateSource(
+  fetchFileWithCaching: FetchFileWithCaching,
+  sourceURL: string,
+  line: number,
+  column: number,
+): Promise<SourceMappedLocation | null>;
+
+export declare function symbolicateSourceWithCache(
+  fetchFileWithCaching: FetchFileWithCaching,
+  sourceURL: string,
+  line: number,
+  column: number,
+): Promise<SourceMappedLocation | null>;
 
 export declare function installHook(
   target: any,

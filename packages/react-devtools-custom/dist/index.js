@@ -1,13 +1,174 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 730:
+/***/ 339:
+/***/ (function(__unused_webpack_module, exports) {
+
+(function (global, factory) {
+   true ? factory(exports) : 0;
+})(this, function (exports) {
+  'use strict';
+
+  const comma = ','.charCodeAt(0);
+  const semicolon = ';'.charCodeAt(0);
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const intToChar = new Uint8Array(64);
+  const charToInt = new Uint8Array(128);
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars.charCodeAt(i);
+    intToChar[i] = c;
+    charToInt[c] = i;
+  }
+  const td = typeof TextDecoder !== 'undefined' ? new TextDecoder() : typeof Buffer !== 'undefined' ? {
+    decode(buf) {
+      const out = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+      return out.toString();
+    }
+  } : {
+    decode(buf) {
+      let out = '';
+      for (let i = 0; i < buf.length; i++) {
+        out += String.fromCharCode(buf[i]);
+      }
+      return out;
+    }
+  };
+  function decode(mappings) {
+    const state = new Int32Array(5);
+    const decoded = [];
+    let index = 0;
+    do {
+      const semi = indexOf(mappings, index);
+      const line = [];
+      let sorted = true;
+      let lastCol = 0;
+      state[0] = 0;
+      for (let i = index; i < semi; i++) {
+        let seg;
+        i = decodeInteger(mappings, i, state, 0);
+        const col = state[0];
+        if (col < lastCol) sorted = false;
+        lastCol = col;
+        if (hasMoreVlq(mappings, i, semi)) {
+          i = decodeInteger(mappings, i, state, 1);
+          i = decodeInteger(mappings, i, state, 2);
+          i = decodeInteger(mappings, i, state, 3);
+          if (hasMoreVlq(mappings, i, semi)) {
+            i = decodeInteger(mappings, i, state, 4);
+            seg = [col, state[1], state[2], state[3], state[4]];
+          } else {
+            seg = [col, state[1], state[2], state[3]];
+          }
+        } else {
+          seg = [col];
+        }
+        line.push(seg);
+      }
+      if (!sorted) sort(line);
+      decoded.push(line);
+      index = semi + 1;
+    } while (index <= mappings.length);
+    return decoded;
+  }
+  function indexOf(mappings, index) {
+    const idx = mappings.indexOf(';', index);
+    return idx === -1 ? mappings.length : idx;
+  }
+  function decodeInteger(mappings, pos, state, j) {
+    let value = 0;
+    let shift = 0;
+    let integer = 0;
+    do {
+      const c = mappings.charCodeAt(pos++);
+      integer = charToInt[c];
+      value |= (integer & 31) << shift;
+      shift += 5;
+    } while (integer & 32);
+    const shouldNegate = value & 1;
+    value >>>= 1;
+    if (shouldNegate) {
+      value = -0x80000000 | -value;
+    }
+    state[j] += value;
+    return pos;
+  }
+  function hasMoreVlq(mappings, i, length) {
+    if (i >= length) return false;
+    return mappings.charCodeAt(i) !== comma;
+  }
+  function sort(line) {
+    line.sort(sortComparator);
+  }
+  function sortComparator(a, b) {
+    return a[0] - b[0];
+  }
+  function encode(decoded) {
+    const state = new Int32Array(5);
+    const bufLength = 1024 * 16;
+    const subLength = bufLength - 36;
+    const buf = new Uint8Array(bufLength);
+    const sub = buf.subarray(0, subLength);
+    let pos = 0;
+    let out = '';
+    for (let i = 0; i < decoded.length; i++) {
+      const line = decoded[i];
+      if (i > 0) {
+        if (pos === bufLength) {
+          out += td.decode(buf);
+          pos = 0;
+        }
+        buf[pos++] = semicolon;
+      }
+      if (line.length === 0) continue;
+      state[0] = 0;
+      for (let j = 0; j < line.length; j++) {
+        const segment = line[j];
+        if (pos > subLength) {
+          out += td.decode(sub);
+          buf.copyWithin(0, subLength, pos);
+          pos -= subLength;
+        }
+        if (j > 0) buf[pos++] = comma;
+        pos = encodeInteger(buf, pos, state, segment, 0);
+        if (segment.length === 1) continue;
+        pos = encodeInteger(buf, pos, state, segment, 1);
+        pos = encodeInteger(buf, pos, state, segment, 2);
+        pos = encodeInteger(buf, pos, state, segment, 3);
+        if (segment.length === 4) continue;
+        pos = encodeInteger(buf, pos, state, segment, 4);
+      }
+    }
+    return out + td.decode(buf.subarray(0, pos));
+  }
+  function encodeInteger(buf, pos, state, segment, j) {
+    const next = segment[j];
+    let num = next - state[j];
+    state[j] = next;
+    num = num < 0 ? -num << 1 | 1 : num << 1;
+    do {
+      let clamped = num & 0b011111;
+      num >>>= 5;
+      if (num > 0) clamped |= 0b100000;
+      buf[pos++] = intToChar[clamped];
+    } while (num > 0);
+    return pos;
+  }
+  exports.decode = decode;
+  exports.encode = encode;
+  Object.defineProperty(exports, '__esModule', {
+    value: true
+  });
+});
+
+/***/ }),
+
+/***/ 162:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 "use strict";
 
 
-const Yallist = __webpack_require__(695);
+const Yallist = __webpack_require__(402);
 const MAX = Symbol('max');
 const LENGTH = Symbol('length');
 const LENGTH_CALCULATOR = Symbol('lengthCalculator');
@@ -253,7 +414,7 @@ module.exports = LRUCache;
 
 /***/ }),
 
-/***/ 476:
+/***/ 536:
 /***/ ((module) => {
 
 "use strict";
@@ -269,7 +430,7 @@ module.exports = function (Yallist) {
 
 /***/ }),
 
-/***/ 695:
+/***/ 402:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 "use strict";
@@ -634,19 +795,19 @@ function Node(value, prev, next, list) {
   }
 }
 try {
-  __webpack_require__(476)(Yallist);
+  __webpack_require__(536)(Yallist);
 } catch (er) {}
 
 /***/ }),
 
-/***/ 521:
+/***/ 859:
 /***/ (function(module, exports, __webpack_require__) {
 
 var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;(function (root, factory) {
   'use strict';
 
   if (true) {
-    !(__WEBPACK_AMD_DEFINE_ARRAY__ = [__webpack_require__(520)], __WEBPACK_AMD_DEFINE_FACTORY__ = (factory),
+    !(__WEBPACK_AMD_DEFINE_ARRAY__ = [__webpack_require__(453)], __WEBPACK_AMD_DEFINE_FACTORY__ = (factory),
 		__WEBPACK_AMD_DEFINE_RESULT__ = (typeof __WEBPACK_AMD_DEFINE_FACTORY__ === 'function' ?
 		(__WEBPACK_AMD_DEFINE_FACTORY__.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__)) : __WEBPACK_AMD_DEFINE_FACTORY__),
 		__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
@@ -798,7 +959,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
 
 /***/ }),
 
-/***/ 520:
+/***/ 453:
 /***/ (function(module, exports) {
 
 var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;(function (root, factory) {
@@ -1017,22 +1178,24 @@ __webpack_require__.d(__webpack_exports__, {
   "endRecording": () => (/* reexport */ endRecording),
   "installHook": () => (/* binding */ installHook),
   "onCommitFiber": () => (/* reexport */ onCommitFiber),
-  "startRecording": () => (/* reexport */ startRecording)
+  "startRecording": () => (/* reexport */ startRecording),
+  "symbolicateSource": () => (/* reexport */ symbolicateSource),
+  "symbolicateSourceWithCache": () => (/* reexport */ symbolicateSourceWithCache)
 });
 
-// EXTERNAL MODULE: ../react-debug-tools/node_modules/error-stack-parser/error-stack-parser.js
-var error_stack_parser = __webpack_require__(521);
+// EXTERNAL MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-debug-tools/node_modules/error-stack-parser/error-stack-parser.js
+var error_stack_parser = __webpack_require__(859);
 var error_stack_parser_default = /*#__PURE__*/__webpack_require__.n(error_stack_parser);
-;// CONCATENATED MODULE: ../shared/assign.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/assign.js
 const assign_assign = Object.assign;
 /* harmony default export */ const shared_assign = (assign_assign);
 ;// CONCATENATED MODULE: external "react"
 const external_react_namespaceObject = require("react");
-;// CONCATENATED MODULE: ../shared/ReactSharedInternals.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/ReactSharedInternals.js
 
 const ReactSharedInternals = external_react_namespaceObject.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
 /* harmony default export */ const shared_ReactSharedInternals = (ReactSharedInternals);
-;// CONCATENATED MODULE: ../react-reconciler/src/ReactWorkTags.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-reconciler/src/ReactWorkTags.js
 const FunctionComponent = 0;
 const ClassComponent = 1;
 const HostRoot = 3;
@@ -1063,7 +1226,7 @@ const IncompleteFunctionComponent = 28;
 const Throw = 29;
 const ViewTransitionComponent = 30;
 const ActivityComponent = 31;
-;// CONCATENATED MODULE: ../shared/ReactSymbols.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/ReactSymbols.js
 const ReactSymbols_REACT_LEGACY_ELEMENT_TYPE = Symbol.for('react.element');
 const REACT_ELEMENT_TYPE = Symbol.for('react.transitional.element');
 const REACT_PORTAL_TYPE = Symbol.for('react.portal');
@@ -1097,10 +1260,10 @@ function getIteratorFn(maybeIterable) {
 }
 const ASYNC_ITERATOR = Symbol.asyncIterator;
 const REACT_OPTIMISTIC_KEY = Symbol.for('react.optimistic_key');
-;// CONCATENATED MODULE: ../shared/hasOwnProperty.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/hasOwnProperty.js
 const hasOwnProperty_hasOwnProperty = Object.prototype.hasOwnProperty;
 /* harmony default export */ const shared_hasOwnProperty = (hasOwnProperty_hasOwnProperty);
-;// CONCATENATED MODULE: ../react-debug-tools/src/ReactDebugHooks.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-debug-tools/src/ReactDebugHooks.js
 
 
 
@@ -2001,12 +2164,12 @@ function inspectHooksOfFiber(fiber, currentDispatcher) {
     restoreContexts(contextMap);
   }
 }
-;// CONCATENATED MODULE: ../react-debug-tools/src/ReactDebugTools.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-debug-tools/src/ReactDebugTools.js
 
 
-;// CONCATENATED MODULE: ../react-debug-tools/index.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-debug-tools/index.js
 
-;// CONCATENATED MODULE: ../react-devtools-shared/src/backend/fiber/shared/DevToolsFiberInspection.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/backend/fiber/shared/DevToolsFiberInspection.js
 const DevToolsFiberInspection_toString = Object.prototype.toString;
 function isError(object) {
   return DevToolsFiberInspection_toString.call(object) === '[object Error]';
@@ -2068,13 +2231,13 @@ function areEqualRects(a, b) {
   }
   return true;
 }
-;// CONCATENATED MODULE: ../shared/objectIs.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/objectIs.js
 function is(x, y) {
   return x === y && (x !== 0 || 1 / x === 1 / y) || x !== x && y !== y;
 }
 const objectIs = typeof Object.is === 'function' ? Object.is : is;
 /* harmony default export */ const shared_objectIs = (objectIs);
-;// CONCATENATED MODULE: ../react-devtools-shared/src/backend/fiber/shared/DevToolsFiberChangeDetection.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/backend/fiber/shared/DevToolsFiberChangeDetection.js
 
 
 function getContextChanged(prevFiber, nextFiber) {
@@ -2178,7 +2341,7 @@ function didStatefulHookChange_didStatefulHookChange(prev, next) {
   }
   return false;
 }
-;// CONCATENATED MODULE: ../shared/ReactFeatureFlags.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/ReactFeatureFlags.js
 const disableSchedulerTimeoutInWorkLoop = false;
 const enableSuspenseCallback = false;
 const enableScopeAPI = false;
@@ -2243,7 +2406,7 @@ const ownerStackLimit = 1e4;
 const eprh_enableUseKeyedStateCompilerLint = false;
 const eprh_enableVerboseNoSetStateInEffectCompilerLint = false;
 const eprh_enableExhaustiveEffectDependenciesCompilerLint = 'off';
-;// CONCATENATED MODULE: ../shared/getComponentNameFromType.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/getComponentNameFromType.js
 
 
 function getWrappedName(outerType, innerType, wrapperName) {
@@ -2466,10 +2629,10 @@ function collectFiberChanges(fiber, changes, mountedFibers) {
   }
   collectFiberChanges(fiber.sibling, changes, mountedFibers);
 }
-// EXTERNAL MODULE: ../../node_modules/lru-cache/index.js
-var lru_cache = __webpack_require__(730);
+// EXTERNAL MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/node_modules/lru-cache/index.js
+var lru_cache = __webpack_require__(162);
 var lru_cache_default = /*#__PURE__*/__webpack_require__.n(lru_cache);
-;// CONCATENATED MODULE: ../react-devtools-shared/src/hydration.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/hydration.js
 
 
 
@@ -2943,16 +3106,16 @@ function upgradeUnserializable(destination, source) {
   delete destination.type;
   delete destination.unserializable;
 }
-;// CONCATENATED MODULE: ../react-devtools-shared/src/isArray.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/isArray.js
 const isArray_isArray = Array.isArray;
 /* harmony default export */ const src_isArray = (isArray_isArray);
-;// CONCATENATED MODULE: ../shared/isArray.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/shared/isArray.js
 const isArrayImpl = Array.isArray;
 function shared_isArray_isArray(a) {
   return isArrayImpl(a);
 }
 /* harmony default export */ const shared_isArray = ((/* unused pure expression or super */ null && (shared_isArray_isArray)));
-;// CONCATENATED MODULE: ../react-devtools-shared/src/backend/utils/index.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/backend/utils/index.js
 
 
 
@@ -3122,7 +3285,7 @@ const isReactNativeEnvironment = () => {
 function formatDurationToMicrosecondsGranularity(duration) {
   return Math.round(duration * 1000) / 1000;
 }
-;// CONCATENATED MODULE: ../react-devtools-shared/src/utils.js
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/utils.js
 
 
 
@@ -4249,6 +4412,336 @@ function onCommitFiber(root, currentDispatcherRef) {
   }
   return commitChanges;
 }
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/constants.js
+const CHROME_WEBSTORE_EXTENSION_ID = 'fmkadmapgofadopljbjfkapdkoienihi';
+const INTERNAL_EXTENSION_ID = 'dnjnjgbfilfphmojnmhliehogmojhclc';
+const LOCAL_EXTENSION_ID = 'ikiahnapldjmdmpkmfhjdjilojjhgcbf';
+const __DEBUG__ = false;
+const constants_PERFORMANCE_PROFILE_ = false;
+const constants_TREE_OPERATION_ADD = 1;
+const constants_TREE_OPERATION_REMOVE = 2;
+const constants_TREE_OPERATION_REORDER_CHILDREN = 3;
+const constants_TREE_OPERATION_UPDATE_TREE_BASE_DURATION = 4;
+const constants_TREE_OPERATION_UPDATE_ERRORS_OR_WARNINGS = 5;
+const constants_TREE_OPERATION_SET_SUBTREE_MODE = 7;
+const constants_SUSPENSE_TREE_OPERATION_ADD = 8;
+const constants_SUSPENSE_TREE_OPERATION_REMOVE = 9;
+const constants_SUSPENSE_TREE_OPERATION_REORDER_CHILDREN = 10;
+const constants_SUSPENSE_TREE_OPERATION_RESIZE = 11;
+const constants_SUSPENSE_TREE_OPERATION_SUSPENDERS = 12;
+const constants_TREE_OPERATION_APPLIED_ACTIVITY_SLICE_CHANGE = 13;
+const PROFILING_FLAG_BASIC_SUPPORT = 0b001;
+const PROFILING_FLAG_TIMELINE_SUPPORT = 0b010;
+const PROFILING_FLAG_PERFORMANCE_TRACKS_SUPPORT = 0b100;
+const UNKNOWN_SUSPENDERS_NONE = 0;
+const UNKNOWN_SUSPENDERS_REASON_PRODUCTION = 1;
+const UNKNOWN_SUSPENDERS_REASON_OLD_VERSION = 2;
+const UNKNOWN_SUSPENDERS_REASON_THROWN_PROMISE = 3;
+const LOCAL_STORAGE_DEFAULT_TAB_KEY = 'React::DevTools::defaultTab';
+const constants_LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY = 'React::DevTools::componentFilters';
+const SESSION_STORAGE_LAST_SELECTION_KEY = 'React::DevTools::lastSelection';
+const constants_LOCAL_STORAGE_OPEN_IN_EDITOR_URL = 'React::DevTools::openInEditorUrl';
+const constants_LOCAL_STORAGE_OPEN_IN_EDITOR_URL_PRESET = 'React::DevTools::openInEditorUrlPreset';
+const constants_LOCAL_STORAGE_ALWAYS_OPEN_IN_EDITOR = 'React::DevTools::alwaysOpenInEditor';
+const LOCAL_STORAGE_PARSE_HOOK_NAMES_KEY = 'React::DevTools::parseHookNames';
+const constants_SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY = 'React::DevTools::recordChangeDescriptions';
+const constants_SESSION_STORAGE_RECORD_TIMELINE_KEY = 'React::DevTools::recordTimeline';
+const constants_SESSION_STORAGE_RELOAD_AND_PROFILE_KEY = 'React::DevTools::reloadAndProfile';
+const LOCAL_STORAGE_BROWSER_THEME = 'React::DevTools::theme';
+const LOCAL_STORAGE_TRACE_UPDATES_ENABLED_KEY = 'React::DevTools::traceUpdatesEnabled';
+const LOCAL_STORAGE_SUPPORTS_PROFILING_KEY = 'React::DevTools::supportsProfiling';
+const PROFILER_EXPORT_VERSION = 5;
+const FIREFOX_CONSOLE_DIMMING_COLOR = 'color: rgba(124, 124, 124, 0.75)';
+const ANSI_STYLE_DIMMING_TEMPLATE = '\x1b[2;38;2;124;124;124m%s\x1b[0m';
+const ANSI_STYLE_DIMMING_TEMPLATE_WITH_COMPONENT_STACK = '\x1b[2;38;2;124;124;124m%s %o\x1b[0m';
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/PerformanceLoggingUtils.js
+
+const supportsUserTiming = typeof performance !== 'undefined' && typeof performance.mark === 'function' && typeof performance.clearMarks === 'function';
+const supportsPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';
+function mark(markName) {
+  if (supportsUserTiming) {
+    performance.mark(markName + '-start');
+  }
+}
+function measure(markName) {
+  if (supportsUserTiming) {
+    performance.mark(markName + '-end');
+    performance.measure(markName, markName + '-start', markName + '-end');
+    performance.clearMarks(markName + '-start');
+    performance.clearMarks(markName + '-end');
+  }
+}
+function now() {
+  if (supportsPerformanceNow) {
+    return performance.now();
+  }
+  return Date.now();
+}
+async function withAsyncPerfMeasurements(markName, callback, onComplete) {
+  const start = now();
+  if (__PERFORMANCE_PROFILE__) {
+    mark(markName);
+  }
+  const result = await callback();
+  if (__PERFORMANCE_PROFILE__) {
+    measure(markName);
+  }
+  if (onComplete != null) {
+    const duration = now() - start;
+    onComplete(duration);
+  }
+  return result;
+}
+function withSyncPerfMeasurements(markName, callback, onComplete) {
+  const start = now();
+  if (constants_PERFORMANCE_PROFILE_) {
+    mark(markName);
+  }
+  const result = callback();
+  if (constants_PERFORMANCE_PROFILE_) {
+    measure(markName);
+  }
+  if (onComplete != null) {
+    const duration = now() - start;
+    onComplete(duration);
+  }
+  return result;
+}
+function withCallbackPerfMeasurements(markName, callback, onComplete) {
+  const start = now();
+  if (__PERFORMANCE_PROFILE__) {
+    mark(markName);
+  }
+  const done = () => {
+    if (__PERFORMANCE_PROFILE__) {
+      measure(markName);
+    }
+    if (onComplete != null) {
+      const duration = now() - start;
+      onComplete(duration);
+    }
+  };
+  return callback(done);
+}
+// EXTERNAL MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/node_modules/@jridgewell/sourcemap-codec/dist/sourcemap-codec.umd.js
+var sourcemap_codec_umd = __webpack_require__(339);
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/hooks/SourceMapConsumer.js
+
+
+function SourceMapConsumer(sourceMapJSON) {
+  if (sourceMapJSON.sections != null) {
+    return IndexedSourceMapConsumer(sourceMapJSON);
+  } else {
+    return BasicSourceMapConsumer(sourceMapJSON);
+  }
+}
+function BasicSourceMapConsumer(sourceMapJSON) {
+  const decodedMappings = withSyncPerfMeasurements('Decoding source map mappings with @jridgewell/sourcemap-codec', () => (0,sourcemap_codec_umd.decode)(sourceMapJSON.mappings));
+  function originalPositionFor({
+    columnNumber,
+    lineNumber
+  }) {
+    const targetColumnNumber = columnNumber - 1;
+    const lineMappings = decodedMappings[lineNumber - 1];
+    let nearestEntry = null;
+    let startIndex = 0;
+    let stopIndex = lineMappings.length - 1;
+    let index = -1;
+    while (startIndex <= stopIndex) {
+      index = Math.floor((stopIndex + startIndex) / 2);
+      nearestEntry = lineMappings[index];
+      const currentColumn = nearestEntry[0];
+      if (currentColumn === targetColumnNumber) {
+        break;
+      } else {
+        if (currentColumn > targetColumnNumber) {
+          if (stopIndex - index > 0) {
+            stopIndex = index;
+          } else {
+            index = stopIndex;
+            break;
+          }
+        } else {
+          if (index - startIndex > 0) {
+            startIndex = index;
+          } else {
+            index = startIndex;
+            break;
+          }
+        }
+      }
+    }
+    while (index > 0) {
+      const previousEntry = lineMappings[index - 1];
+      const currentColumn = previousEntry[0];
+      if (currentColumn !== targetColumnNumber) {
+        break;
+      }
+      index--;
+    }
+    if (nearestEntry == null) {
+      throw Error(`Could not find runtime location for line:${lineNumber} and column:${columnNumber}`);
+    }
+    const sourceIndex = nearestEntry[1];
+    const sourceContent = sourceMapJSON.sourcesContent != null ? sourceMapJSON.sourcesContent[sourceIndex] : null;
+    const sourceURL = sourceMapJSON.sources[sourceIndex] ?? null;
+    const line = nearestEntry[2] + 1;
+    const column = nearestEntry[3];
+    const ignored = sourceMapJSON.ignoreList != null && sourceMapJSON.ignoreList.includes(sourceIndex);
+    return {
+      column,
+      line,
+      sourceContent: sourceContent,
+      sourceURL: sourceURL,
+      ignored
+    };
+  }
+  return {
+    originalPositionFor
+  };
+}
+function IndexedSourceMapConsumer(sourceMapJSON) {
+  let lastOffset = {
+    line: -1,
+    column: 0
+  };
+  const sections = sourceMapJSON.sections.map(section => {
+    const offset = section.offset;
+    const offsetLine0 = offset.line;
+    const offsetColumn0 = offset.column;
+    if (offsetLine0 < lastOffset.line || offsetLine0 === lastOffset.line && offsetColumn0 < lastOffset.column) {
+      throw new Error('Section offsets must be ordered and non-overlapping.');
+    }
+    lastOffset = offset;
+    return {
+      offsetLine0,
+      offsetColumn0,
+      map: section.map,
+      sourceMapConsumer: null
+    };
+  });
+  function originalPositionFor({
+    columnNumber,
+    lineNumber
+  }) {
+    const column0 = columnNumber - 1;
+    const line0 = lineNumber - 1;
+    let left = 0;
+    let right = sections.length - 1;
+    let section = null;
+    while (left <= right) {
+      const middle = ~~((left + right) / 2);
+      const currentSection = sections[middle];
+      if (currentSection.offsetLine0 < line0 || currentSection.offsetLine0 === line0 && currentSection.offsetColumn0 <= column0) {
+        section = currentSection;
+        left = middle + 1;
+      } else {
+        right = middle - 1;
+      }
+    }
+    if (section == null) {
+      throw Error(`Could not find matching section for line:${lineNumber} and column:${columnNumber}`);
+    }
+    if (section.sourceMapConsumer === null) {
+      section.sourceMapConsumer = new SourceMapConsumer(section.map);
+    }
+    return section.sourceMapConsumer.originalPositionFor({
+      columnNumber: columnNumber - section.offsetColumn0,
+      lineNumber: lineNumber - section.offsetLine0
+    });
+  }
+  return {
+    originalPositionFor
+  };
+}
+;// CONCATENATED MODULE: ../../../../../../Users/jeong-yunjo/Desktop/react-record/react/packages/react-devtools-shared/src/symbolicateSource.js
+
+const symbolicationCache = new Map();
+function symbolicateSourceWithCache(fetchFileWithCaching, sourceURL, line, column) {
+  const key = `${sourceURL}:${line}:${column}`;
+  const cachedPromise = symbolicationCache.get(key);
+  if (cachedPromise != null) {
+    return cachedPromise;
+  }
+  const promise = symbolicateSource(fetchFileWithCaching, sourceURL, line, column);
+  symbolicationCache.set(key, promise);
+  return promise;
+}
+const SOURCE_MAP_ANNOTATION_PREFIX = 'sourceMappingURL=';
+async function symbolicateSource(fetchFileWithCaching, sourceURL, lineNumber, columnNumber) {
+  if (!sourceURL || sourceURL.startsWith('<anonymous')) {
+    return null;
+  }
+  const resource = await fetchFileWithCaching(sourceURL).catch(() => null);
+  if (resource == null) {
+    return null;
+  }
+  const resourceLines = resource.split(/[\r\n]+/);
+  for (let i = resourceLines.length - 1; i >= 0; --i) {
+    const resourceLine = resourceLines[i];
+    if (!resourceLine) continue;
+    if (!resourceLine.startsWith('//#')) break;
+    if (resourceLine.includes(SOURCE_MAP_ANNOTATION_PREFIX)) {
+      const sourceMapAnnotationStartIndex = resourceLine.indexOf(SOURCE_MAP_ANNOTATION_PREFIX);
+      const sourceMapAt = resourceLine.slice(sourceMapAnnotationStartIndex + SOURCE_MAP_ANNOTATION_PREFIX.length, resourceLine.length);
+      let sourceMapURL;
+      try {
+        sourceMapURL = new URL(sourceMapAt, sourceURL).toString();
+      } catch (e) {
+        try {
+          sourceMapURL = new URL(sourceMapAt).toString();
+        } catch (_e) {
+          return null;
+        }
+      }
+      const sourceMap = await fetchFileWithCaching(sourceMapURL).catch(() => null);
+      if (sourceMap != null) {
+        try {
+          const parsedSourceMap = JSON.parse(sourceMap);
+          const consumer = SourceMapConsumer(parsedSourceMap);
+          const functionName = '';
+          const {
+            sourceURL: possiblyURL,
+            line,
+            column: columnZeroBased,
+            ignored
+          } = consumer.originalPositionFor({
+            lineNumber,
+            columnNumber
+          });
+          const column = columnZeroBased + 1;
+          if (possiblyURL === null) {
+            return null;
+          }
+          try {
+            void new URL(possiblyURL);
+            return {
+              location: [functionName, possiblyURL, line, column],
+              ignored
+            };
+          } catch (e) {
+            if (possiblyURL.startsWith('/') || possiblyURL.slice(1).startsWith(':\\\\')) {
+              return {
+                location: [functionName, possiblyURL, line, column],
+                ignored
+              };
+            }
+            const sourcePathBaseURL = sourceMapURL.startsWith('data:') ? sourceURL : sourceMapURL;
+            const absoluteSourcePath = new URL(possiblyURL, sourcePathBaseURL).toString();
+            return {
+              location: [functionName, absoluteSourcePath, line, column],
+              ignored
+            };
+          }
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
+    }
+  }
+  return null;
+}
 ;// CONCATENATED MODULE: ./index.js
 function installHook(target, componentFiltersOrComponentFiltersPromise, maybeSettingsOrSettingsPromise, shouldStartProfilingNow, profilingSettings) {
   if (typeof target !== 'object' || target == null) {
@@ -4261,6 +4754,7 @@ function installHook(target, componentFiltersOrComponentFiltersPromise, maybeSet
   backend.initialize(maybeSettingsOrSettingsPromise, shouldStartProfilingNow, profilingSettings, componentFiltersOrComponentFiltersPromise);
   return target.__REACT_DEVTOOLS_GLOBAL_HOOK__ ?? null;
 }
+
 
 })();
 

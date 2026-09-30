@@ -36,6 +36,7 @@ export function installHook(
 }
 
 export {endRecording, onCommitFiber, startRecording} from './src/onCommitFiber';
+export {symbolicateSource, symbolicateSourceWithCache} from 'react-devtools-shared/src/symbolicateSource';
 
 export type {
   ChangeDescription,

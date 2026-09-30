@@ -138,9 +138,12 @@ export async function symbolicateSource(
 
             // This is a relative path
             // possiblyURL = x.js.map, sourceMapURL = https://react.dev/script.js.map
+            const sourcePathBaseURL = sourceMapURL.startsWith('data:')
+              ? sourceURL
+              : sourceMapURL;
             const absoluteSourcePath = new URL(
               possiblyURL,
-              sourceMapURL,
+              sourcePathBaseURL,
             ).toString();
             return {
               location: [functionName, absoluteSourcePath, line, column],

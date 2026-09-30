@@ -457,6 +457,31 @@ function f() { }
       const run = url => symbolicateSource(fetch3, url, 4, 10);
       await expect(run('invalid-base.js')).resolves.toStrictEqual(result);
     });
+
+    it('should resolve relative sources from an inline source map', async () => {
+      const sourceURL = 'http://test/dev/CustomHookButton.tsx';
+      const sourceMap = JSON.stringify({
+        version: 3,
+        sources: ['CustomHookButton.tsx'],
+        names: [],
+        mappings: 'AAAA',
+      });
+      const sourceMapURL = `data:application/json,${encodeURIComponent(
+        sourceMap,
+      )}`;
+      const fs4 = {
+        [sourceURL]: `//# sourceMappingURL=${sourceMapURL}`,
+        [sourceMapURL]: sourceMap,
+      };
+      const fetch4 = async url => fs4[url] || null;
+
+      await expect(
+        symbolicateSource(fetch4, sourceURL, 1, 1),
+      ).resolves.toStrictEqual({
+        location: ['', sourceURL, 1, 1],
+        ignored: false,
+      });
+    });
   });
 
   describe('formatConsoleArguments', () => {
