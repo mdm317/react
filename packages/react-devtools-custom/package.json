@@ -11,7 +11,7 @@
     "start": "cross-env NODE_ENV=development webpack --config webpack.config.js --watch"
   },
   "dependencies": {
-    "react-devtools-core": "7.0.1"
+    "react-devtools-core": "8.0.0"
   },
   "repository": {
     "type": "git",
