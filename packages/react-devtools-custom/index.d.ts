@@ -154,6 +154,9 @@ export type ResolvedHookChange = {
   hookName?: string | null;
   hookPath?: Array<string> | null;
   hookSource?: HookSource | null;
+  // hookSource of the custom hook that directly called this hook — the line
+  // where that custom hook was invoked. null when called from the component.
+  hookCallerSource?: HookSource | null;
   prev: unknown;
   next: unknown;
 };

@@ -4285,11 +4285,11 @@ function getMemoizedStateConsumption(hook) {
       return 1;
   }
 }
-function collectHooksByMemoizedStateIndex(tree, path, hooksByMemoizedStateIndex, memoizedStateIndex) {
+function collectHooksByMemoizedStateIndex(tree, path, callerSource, hooksByMemoizedStateIndex, memoizedStateIndex) {
   for (const hook of tree) {
     if (hook.subHooks.length > 0) {
       const hookName = getHookName(hook);
-      memoizedStateIndex = collectHooksByMemoizedStateIndex(hook.subHooks, [...path, hookName], hooksByMemoizedStateIndex, memoizedStateIndex);
+      memoizedStateIndex = collectHooksByMemoizedStateIndex(hook.subHooks, [...path, hookName], hook.hookSource ?? null, hooksByMemoizedStateIndex, memoizedStateIndex);
       continue;
     }
     const consumption = getMemoizedStateConsumption(hook);
@@ -4298,7 +4298,8 @@ function collectHooksByMemoizedStateIndex(tree, path, hooksByMemoizedStateIndex,
     }
     hooksByMemoizedStateIndex.set(memoizedStateIndex, {
       hook,
-      path
+      path,
+      callerSource
     });
     memoizedStateIndex += consumption;
   }
@@ -4324,7 +4325,7 @@ function getHooksByMemoizedStateIndex(cache, fiber, currentDispatcherRef) {
     hooksByMemoizedStateIndex = null;
   } else {
     hooksByMemoizedStateIndex = new Map();
-    collectHooksByMemoizedStateIndex(hooksTree, [], hooksByMemoizedStateIndex, 0);
+    collectHooksByMemoizedStateIndex(hooksTree, [], null, hooksByMemoizedStateIndex, 0);
   }
   cache.set(fiber, {
     currentDispatcherRef,
@@ -4367,6 +4368,7 @@ function flushCommit() {
           hookName: resolvedHook.hook.name,
           hookPath: [...resolvedHook.path, resolvedHook.hook.name],
           hookSource: resolvedHook.hook.hookSource,
+          hookCallerSource: resolvedHook.callerSource,
           prev: hookIndex.prev,
           next: hookIndex.next
         });

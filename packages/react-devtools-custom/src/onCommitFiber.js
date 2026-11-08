@@ -8,7 +8,11 @@
  */
 
 import type {Fiber, FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
-import type {HooksNode, HooksTree} from 'react-debug-tools/src/ReactDebugHooks';
+import type {
+  HookSource,
+  HooksNode,
+  HooksTree,
+} from 'react-debug-tools/src/ReactDebugHooks';
 
 export type {Fiber, FiberRoot};
 export type {
@@ -78,6 +82,10 @@ function collectAliveFibers(fiber: Fiber | null, set: Set<Fiber>): void {
 type ResolvedHookEntry = {
   hook: HooksNode,
   path: Array<string>,
+  // hookSource of the custom hook that directly called this hook, i.e. the
+  // line where that custom hook was invoked. null for hooks called directly
+  // from the component body.
+  callerSource: HookSource | null,
 };
 
 type HooksByMemoizedStateIndex = Map<number, ResolvedHookEntry>;
@@ -114,6 +122,7 @@ function getMemoizedStateConsumption(hook: HooksNode): number {
 function collectHooksByMemoizedStateIndex(
   tree: HooksTree,
   path: Array<string>,
+  callerSource: HookSource | null,
   hooksByMemoizedStateIndex: HooksByMemoizedStateIndex,
   memoizedStateIndex: number,
 ): number {
@@ -124,6 +133,7 @@ function collectHooksByMemoizedStateIndex(
       memoizedStateIndex = collectHooksByMemoizedStateIndex(
         hook.subHooks,
         [...path, hookName],
+        hook.hookSource ?? null,
         hooksByMemoizedStateIndex,
         memoizedStateIndex,
       );
@@ -137,7 +147,11 @@ function collectHooksByMemoizedStateIndex(
       continue;
     }
 
-    hooksByMemoizedStateIndex.set(memoizedStateIndex, {hook, path});
+    hooksByMemoizedStateIndex.set(memoizedStateIndex, {
+      hook,
+      path,
+      callerSource,
+    });
     memoizedStateIndex += consumption;
   }
 
@@ -183,6 +197,7 @@ function getHooksByMemoizedStateIndex(
     collectHooksByMemoizedStateIndex(
       hooksTree,
       [],
+      null,
       hooksByMemoizedStateIndex,
       0,
     );
@@ -249,6 +264,7 @@ function flushCommit(): Array<Array<CommittedFiberChange>> {
           hookName: resolvedHook.hook.name,
           hookPath: [...resolvedHook.path, resolvedHook.hook.name],
           hookSource: resolvedHook.hook.hookSource,
+          hookCallerSource: resolvedHook.callerSource,
           prev: hookIndex.prev,
           next: hookIndex.next,
         });

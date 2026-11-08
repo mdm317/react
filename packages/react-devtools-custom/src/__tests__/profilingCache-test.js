@@ -55,6 +55,7 @@ function toChangeDescriptionsByDisplayName(commitChanges) {
             hookName: h.hookName,
             hookPath: h.hookPath,
             hookSource: normalizeHookSource(h.hookSource),
+            hookCallerSource: normalizeHookSource(h.hookCallerSource),
           }))
         : change.hooks;
     }
@@ -353,6 +354,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 1,
               "hookName": "Reducer",
               "hookPath": [
@@ -381,6 +383,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -423,6 +426,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 2,
               "hookName": "SyncExternalStore",
               "hookPath": [
@@ -558,6 +562,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -586,6 +591,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 1,
               "hookName": "SyncExternalStore",
               "hookPath": [
@@ -614,6 +620,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 2,
               "hookName": "Transition",
               "hookPath": [
@@ -642,6 +649,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 2,
               "hookName": "Transition",
               "hookPath": [
@@ -670,6 +678,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 3,
               "hookName": "ActionState",
               "hookPath": [
@@ -698,6 +707,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 4,
               "hookName": "State",
               "hookPath": [
@@ -719,6 +734,24 @@ describe('ProfilingCache', () => {
       }
     `);
 
+    // hookCallerSource points at the line where useCustomHook() is invoked
+    // inside Component, not at the useState line inside useCustomHook.
+    const customHookChange = recorded[6]
+      .find(c => c.displayName === 'Component')
+      .hooks.find(h => h.hookIndex === 4);
+    const testSourceLines = require('fs')
+      .readFileSync(__filename, 'utf8')
+      .split('\n');
+    const callerLine =
+      testSourceLines.findIndex(line => line.includes('= useCustomHook();')) +
+      1;
+    const hookLine =
+      testSourceLines.findIndex(line =>
+        line.includes("React.useState('custom')"),
+      ) + 1;
+    expect(customHookChange.hookCallerSource.lineNumber).toBe(callerLine);
+    expect(customHookChange.hookSource.lineNumber).toBe(hookLine);
+
     // 8th render: Changed hook 6 (final useState)
     expect(changeDescriptions[7]).toMatchInlineSnapshot(`
       Map {
@@ -727,6 +760,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 6,
               "hookName": "State",
               "hookPath": [
@@ -831,6 +865,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -930,7 +965,9 @@ describe('ProfilingCache', () => {
             hooks:
               entry.hooks == null
                 ? entry.hooks
-                : entry.hooks.map(({hookSource, ...hook}) => hook),
+                : entry.hooks.map(
+                    ({hookSource, hookCallerSource, ...hook}) => hook,
+                  ),
           },
         ]),
       );
@@ -1538,6 +1575,7 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
+              "hookCallerSource": null,
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [

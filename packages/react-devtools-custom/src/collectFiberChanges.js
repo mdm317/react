@@ -40,6 +40,7 @@ export type ResolvedHookChange = {
   hookName?: string | null,
   hookPath?: Array<string> | null,
   hookSource?: HookSource | null,
+  hookCallerSource?: HookSource | null,
   prev: mixed,
   next: mixed,
 };
