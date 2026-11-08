@@ -354,7 +354,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 1,
               "hookName": "Reducer",
               "hookPath": [
@@ -383,7 +388,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -426,7 +436,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 2,
               "hookName": "SyncExternalStore",
               "hookPath": [
@@ -562,7 +577,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -591,7 +611,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 1,
               "hookName": "SyncExternalStore",
               "hookPath": [
@@ -620,7 +645,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 2,
               "hookName": "Transition",
               "hookPath": [
@@ -649,7 +679,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 2,
               "hookName": "Transition",
               "hookPath": [
@@ -678,7 +713,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 3,
               "hookName": "ActionState",
               "hookPath": [
@@ -743,14 +783,26 @@ describe('ProfilingCache', () => {
       .readFileSync(__filename, 'utf8')
       .split('\n');
     const callerLine =
-      testSourceLines.findIndex(line => line.includes('= useCustomHook();')) +
-      1;
+      testSourceLines.findIndex(
+        line =>
+          line.trim() ===
+          'const [customValue, _setCustomValue] = useCustomHook();',
+      ) + 1;
     const hookLine =
-      testSourceLines.findIndex(line =>
-        line.includes("React.useState('custom')"),
+      testSourceLines.findIndex(
+        line =>
+          line.trim() === "const [value, setValue] = React.useState('custom');",
       ) + 1;
     expect(customHookChange.hookCallerSource.lineNumber).toBe(callerLine);
     expect(customHookChange.hookSource.lineNumber).toBe(hookLine);
+
+    // a hook the component called directly leads to the component line itself
+    const directHookChange = recorded[1]
+      .find(c => c.displayName === 'Component')
+      .hooks.find(h => h.hookIndex === 0);
+    expect(directHookChange.hookCallerSource).toEqual(
+      directHookChange.hookSource,
+    );
 
     // 8th render: Changed hook 6 (final useState)
     expect(changeDescriptions[7]).toMatchInlineSnapshot(`
@@ -760,7 +812,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 6,
               "hookName": "State",
               "hookPath": [
@@ -780,6 +837,54 @@ describe('ProfilingCache', () => {
         },
       }
     `);
+  });
+
+  it('should point hookCallerSource at the outermost custom hook call for nested custom hooks', () => {
+    function useInnerHook() {
+      return React.useState(0);
+    }
+
+    function useOuterHook() {
+      return useInnerHook();
+    }
+
+    let setValue = null;
+    const Component = () => {
+      const [value, _setValue] = useOuterHook();
+      setValue = _setValue;
+      return value;
+    };
+
+    utils.act(() => render(<Component />));
+    utils.act(() => startRecording());
+    utils.act(() => setValue(1));
+
+    let recorded;
+    utils.act(() => {
+      recorded = endRecording();
+    });
+
+    const change = recorded[0].find(c => c.displayName === 'Component');
+    expect(change.hooks).toHaveLength(1);
+    const [hook] = change.hooks;
+    expect(hook.hookPath).toEqual(['OuterHook', 'InnerHook', 'State']);
+
+    const testSourceLines = require('fs')
+      .readFileSync(__filename, 'utf8')
+      .split('\n');
+    const lineOf = text =>
+      testSourceLines.findIndex(line => line.trim() === text) + 1;
+
+    // the useOuterHook() call in Component, not the useInnerHook() call inside useOuterHook
+    expect(hook.hookCallerSource).toEqual(
+      expect.objectContaining({
+        functionName: 'Component',
+        lineNumber: lineOf('const [value, _setValue] = useOuterHook();'),
+      }),
+    );
+    expect(hook.hookSource.lineNumber).toBe(
+      lineOf('return React.useState(0);'),
+    );
   });
 
   // @reactVersion >= 19.0
@@ -865,7 +970,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Component",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [
@@ -1575,7 +1685,12 @@ describe('ProfilingCache', () => {
           "didHooksChange": true,
           "hooks": [
             {
-              "hookCallerSource": null,
+              "hookCallerSource": {
+                "columnNumber": "removed by test helper",
+                "fileName": "react-devtools-custom/src/__tests__/profilingCache-test.js",
+                "functionName": "Root",
+                "lineNumber": "removed by test helper",
+              },
               "hookIndex": 0,
               "hookName": "State",
               "hookPath": [

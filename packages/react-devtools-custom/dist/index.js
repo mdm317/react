@@ -4289,7 +4289,7 @@ function collectHooksByMemoizedStateIndex(tree, path, callerSource, hooksByMemoi
   for (const hook of tree) {
     if (hook.subHooks.length > 0) {
       const hookName = getHookName(hook);
-      memoizedStateIndex = collectHooksByMemoizedStateIndex(hook.subHooks, [...path, hookName], hook.hookSource ?? null, hooksByMemoizedStateIndex, memoizedStateIndex);
+      memoizedStateIndex = collectHooksByMemoizedStateIndex(hook.subHooks, [...path, hookName], callerSource ?? hook.hookSource, hooksByMemoizedStateIndex, memoizedStateIndex);
       continue;
     }
     const consumption = getMemoizedStateConsumption(hook);
@@ -4299,7 +4299,7 @@ function collectHooksByMemoizedStateIndex(tree, path, callerSource, hooksByMemoi
     hooksByMemoizedStateIndex.set(memoizedStateIndex, {
       hook,
       path,
-      callerSource
+      callerSource: callerSource ?? hook.hookSource
     });
     memoizedStateIndex += consumption;
   }

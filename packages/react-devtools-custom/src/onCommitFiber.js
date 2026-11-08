@@ -82,9 +82,10 @@ function collectAliveFibers(fiber: Fiber | null, set: Set<Fiber>): void {
 type ResolvedHookEntry = {
   hook: HooksNode,
   path: Array<string>,
-  // hookSource of the custom hook that directly called this hook, i.e. the
-  // line where that custom hook was invoked. null for hooks called directly
-  // from the component body.
+  // The line in the component body that leads to this hook: the hookSource of
+  // the outermost custom hook on its path, or the hook's own hookSource when
+  // the component called it directly. Inner custom hooks are skipped because
+  // they usually live in the same library as the hook itself.
   callerSource: HookSource | null,
 };
 
@@ -133,7 +134,7 @@ function collectHooksByMemoizedStateIndex(
       memoizedStateIndex = collectHooksByMemoizedStateIndex(
         hook.subHooks,
         [...path, hookName],
-        hook.hookSource ?? null,
+        callerSource ?? hook.hookSource,
         hooksByMemoizedStateIndex,
         memoizedStateIndex,
       );
@@ -150,7 +151,7 @@ function collectHooksByMemoizedStateIndex(
     hooksByMemoizedStateIndex.set(memoizedStateIndex, {
       hook,
       path,
-      callerSource,
+      callerSource: callerSource ?? hook.hookSource,
     });
     memoizedStateIndex += consumption;
   }

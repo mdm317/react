@@ -72,7 +72,7 @@ Re-exported from `./src/onCommitFiber` and declared in `index.d.ts`:
 | `ChangeDescription` | Per-fiber change summary: `props`, `state`, `context`, `hooks`, `didHooksChange`, `isFirstMount`. |
 | `CommittedFiberChange` | `ChangeDescription` plus `fiber`, `prevFiber`, `displayName`, `actualDuration`, `selfDuration`. The element of the inner array. |
 | `DetectedHookChange` | Raw hook diff produced during commit. `hookIndex` is the position in the fiber's `memoizedState` linked list; no hook-tree metadata yet. |
-| `ResolvedHookChange` | Result of resolving a `DetectedHookChange` against the hook tree at `endRecording` time. `hookIndex` is remapped to the hook tree id; carries `hookName`, `hookPath`, `hookSource`. |
+| `ResolvedHookChange` | Result of resolving a `DetectedHookChange` against the hook tree at `endRecording` time. `hookIndex` is remapped to the hook tree id; carries `hookName`, `hookPath`, `hookSource`, and `hookCallerSource` (the line in the component body that leads to the hook: the `hookSource` of the outermost custom hook on the path, or the hook's own `hookSource` when the component called it directly). |
 
 ### Recording lifecycle
 
